@@ -1,0 +1,24 @@
+[package]
+name = "mdlogger"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+name = "mdlogger"
+path = "src/lib.rs"
+
+[[bin]]
+name = "mdlogger_test_helper"
+path = "src/mdlogger-test-helper.rs"
+
+[dependencies]
+rssettings = "0.2.0"
+time = { version = "0.3", features = ["macros", "formatting", "local-offset"] }
+serde = { version = "1.0.196", features = ["derive"] }
+serde_json = "1.0"
+rand = "0.8.5"
+socket2 = "0.5.6"
+network-interface = "1.1.1"
+rsclp = "0.1.4"
