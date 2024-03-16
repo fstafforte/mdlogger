@@ -7,7 +7,7 @@ pub mod utils;
 mod rollingfile;
 mod network;
 
-use std::fmt::format;
+pub use std::fmt::format;
 use std::path::Path;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Mutex, OnceLock, Condvar};
@@ -32,7 +32,7 @@ const MDLOGGER_PATCHES: u16 = 1;
 const MDLOGGER_CATEGORY: &str = "mdlogger";
 const __FINALIZE_MSG__: &str = "__FINALIZE_MSG__";
 #[allow(dead_code)]
-const DEFAULT_CATEGORY: &str = "default";
+pub const DEFAULT_CATEGORY: &str = "default";
 
 static APPNAME: OnceLock<String> = OnceLock::new();
 static APPVERSION: OnceLock<String> = OnceLock::new();
@@ -362,6 +362,7 @@ fn log_thread_function(settings_file_path: String,
                                                     poison_error.into_inner()
                                                 });
                                                 *fatal_logged = true;
+                                                thread::sleep(Duration::from_millis(500));
                                                 FATAL_LOG_CONDVAR.get().unwrap().notify_one();
                                             }
                                         }
@@ -435,6 +436,7 @@ fn wait_fatal_log_completed() {
     let mut fatal_logged = FATAL_LOG_MUTEX.lock().unwrap();
     while !*fatal_logged {
         fatal_logged = FATAL_LOG_CONDVAR.get().unwrap().wait(fatal_logged).unwrap();
+        thread::sleep(Duration::from_millis(100));
     }
     panic!();
 }
@@ -752,7 +754,6 @@ mod tests {
         do_logs(10 * 1000);
         assert_eq!(Ok(()), finalize());
     }
-
 
     #[test]
     fn rollingfile_wrong_basename() {
