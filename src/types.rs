@@ -68,7 +68,7 @@ impl FromStr for LogMessageFormat {
 }
 
 
-
+#[derive(Serialize, Clone)]
 pub struct LogHandlerBase {
     name: String,
     enabled: bool,

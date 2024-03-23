@@ -17,6 +17,8 @@ use std::{
     str::FromStr
 };
 
+use serde::Serialize;
+use serde_json::{json, Value};
 use socket2::{Domain, SockAddr, Socket, Type};
 
 
@@ -232,6 +234,13 @@ impl LogHandlerFactory for NetworkLogHandlerFactory {
     }
 }
 
+#[derive(Serialize)]
+struct NetworkJsonConfig {
+    base: LogHandlerBase,
+    protocol: String,
+    remote_address: String
+} 
+
 struct NetworkLogHandler {
     base: LogHandlerBase,
     protocol: NetworkProtocol,
@@ -243,9 +252,6 @@ struct NetworkLogHandler {
 
 
 impl NetworkLogHandler {
-
-
-
     fn new(name: String,
         enabled: bool,
         timestamp_format: String,
@@ -351,6 +357,24 @@ impl LogHandler for NetworkLogHandler {
     fn get_pattern(&self) ->&String {
         &self.base.get_pattern()
     }
+
+    fn get_config(&self) -> Value {
+        let config: NetworkJsonConfig = NetworkJsonConfig {
+            base: self.base.clone(),
+            protocol: self.protocol.to_string(),
+            remote_address: format!("{}", self.remote_address.unwrap_or(
+                SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 0u16)
+            ))
+        };
+        match serde_json::to_value::<NetworkJsonConfig>(config) {
+            Ok(value) => { value },
+            Err(error) => { 
+                let e = format!("{}", error);
+                json!({"name": self.base.get_name(), "error": e})
+            }
+        }
+    }
+
     fn log(&mut self, msg_type: &LogMsgType, log_message: &LogMessage) {
         if self.is_enabled() && self.is_msg_type_enabled(msg_type) {
             let mut formatted_message = log_message.formatted_message(
@@ -419,7 +443,6 @@ impl LogHandler for NetworkLogHandler {
         }
     }
 }
-
 
 
 enum UnixDomainProtocol {
@@ -596,7 +619,12 @@ impl LogHandlerFactory for UnixDomainLogHandlerFactory {
     }
 }
 
-
+#[derive(Serialize)]
+struct UnixDomainJsonConfig {
+    base: LogHandlerBase,
+    protocol: String,
+    remote_address: String,
+}
 
 struct UnixDomainLogHandler {
     base: LogHandlerBase,
@@ -675,6 +703,22 @@ impl LogHandler for UnixDomainLogHandler {
     fn get_pattern(&self) ->&String {
         &self.base.get_pattern()
     }
+
+    fn get_config(&self) -> Value {
+        let config: UnixDomainJsonConfig = UnixDomainJsonConfig {
+            base: self.base.clone(),
+            protocol: self.protocol.to_string(),
+            remote_address: self.remote_address.clone()
+        };
+        match serde_json::to_value::<UnixDomainJsonConfig>(config) {
+            Ok(value) => { value },
+            Err(error) => { 
+                let e = format!("{}", error);
+                json!({"name": self.base.get_name(), "error": e})
+            }
+        }
+    }
+
 
     fn log(&mut self, msg_type: &LogMsgType, log_message: &LogMessage) {
         if self.is_enabled() && self.is_msg_type_enabled(msg_type) {

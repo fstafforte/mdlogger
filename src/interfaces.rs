@@ -1,7 +1,7 @@
 use crate::{logmessage::LogMessage, types::LogMsgType};
 use std::result::Result;
 use rssettings::Settings;
-
+use serde_json::Value;
 
 
 
@@ -10,6 +10,7 @@ pub trait LogHandler {
     fn is_enabled(&self) ->bool;
     fn is_msg_type_enabled(&self, msg_type: &LogMsgType) -> bool;
     fn get_pattern(&self) ->&String;
+    fn get_config(&self) -> Value;
     fn log(&mut self, msg_type: &LogMsgType, log_message: &LogMessage);
 }
 

@@ -1,6 +1,7 @@
 use std::str::FromStr;
-
 use rssettings::Settings;
+use serde::Serialize;
+use serde_json::{json, Value};
 
 
 
@@ -34,6 +35,7 @@ const REDIRECTION_KEYS: [&str; LOG_MSG_TYPE_NUM] = [
     FATAL_REDIRECTION_KEY,
 ];
 
+#[derive(Serialize, Clone)]
 pub (self) enum Redirection {
     StdOut,
     StdErr,
@@ -54,7 +56,7 @@ struct ParseRedirectionError{
 }
 
 impl ParseRedirectionError {
-    pub fn new(s: &str) -> Self {
+    fn new(s: &str) -> Self {
         Self {
             error: format!("<{}> is not a valid console redirection, valid are ({})", s, 
                 VALID_REDIRECTIONS.join(", "))
@@ -163,7 +165,7 @@ impl LogHandlerFactory for ConsoleLogHandlerFactory {
     }
 }
 
-
+#[derive(Serialize, Clone)]
 pub struct ConsoleLogHandler {
     base: LogHandlerBase,
     redirections: [Redirection; LOG_MSG_TYPE_NUM]
@@ -208,6 +210,17 @@ impl LogHandler for ConsoleLogHandler {
     fn get_pattern(&self) ->&String {
         &self.base.get_pattern()
     }
+
+    fn get_config(&self) -> Value {
+        match serde_json::to_value::<ConsoleLogHandler>(self.clone()) {
+            Ok(value) => { value },
+            Err(error) => { 
+                let e = format!("{}", error);
+                json!({"name": self.base.get_name(), "error": e})
+            }
+        }
+    }
+
 
     fn log(&mut self, msg_type: &LogMsgType, log_message: &LogMessage) {
         if self.is_enabled() && self.is_msg_type_enabled(msg_type) {

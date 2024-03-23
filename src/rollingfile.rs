@@ -5,6 +5,8 @@ use crate::{
 };
 use rssettings::Settings;
 
+use serde::Serialize;
+use serde_json::{json, Value};
 use time::{
     macros::format_description, 
     OffsetDateTime
@@ -295,6 +297,7 @@ impl LogHandlerFactory for RollingFileLogHandlerFactory {
     }
 }
 
+#[derive(Serialize, Clone)]
 struct RollingFileLogHandler {
     base: LogHandlerBase,
     directory: String,
@@ -366,6 +369,17 @@ impl LogHandler for RollingFileLogHandler {
     fn get_pattern(&self) ->&String {
         &self.base.get_pattern()
     }
+
+    fn get_config(&self) -> Value {
+        match serde_json::to_value::<RollingFileLogHandler>(self.clone()) {
+            Ok(value) => { value },
+            Err(error) => { 
+                let e = format!("{}", error);
+                json!({"name": self.base.get_name(), "error": e})
+            }
+        }
+    }
+
     fn log(&mut self, msg_type: &LogMsgType, log_message: &LogMessage) {
         if self.is_enabled() && self.is_msg_type_enabled(msg_type) {
             let formatted_message = log_message.formatted_message(

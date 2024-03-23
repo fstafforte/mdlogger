@@ -6,11 +6,12 @@ pub mod constants;
 pub mod utils;
 mod rollingfile;
 mod network;
+mod external_commands;
 
 pub use std::fmt::format;
 use std::path::Path;
 use std::sync::mpsc::{channel, Receiver, Sender};
-use std::sync::{Mutex, OnceLock, Condvar};
+use std::sync::{Condvar, Mutex, OnceLock};
 use std::thread::{self, Builder};
 use std::time::Duration;
 use console::ConsoleLogHandlerFactory;
@@ -23,6 +24,7 @@ use logmessage::LogMessage;
 use rssettings::{Settings, GLOBAL_SECTION};
 use types::LogMsgType;
 
+use crate::external_commands::{create_external_commands_thread, execute_external_commands, join_create_external_commands_thread, EXTERNAL_COMMNDS_MESSAGE};
 use crate::utils::{check_message_pattern, remove_quotes};
 
 const MDLOGGER_MAJOR: u16 = 0;
@@ -156,6 +158,14 @@ fn is_mdlogger_enabled() -> bool {
         poison_error.into_inner()
     });
     guard.clone()
+}
+
+pub (crate) fn set_mdlogger_enabled(enabled: bool) {
+    let mut guard = MDLOGGER_MUTEX.lock().unwrap_or_else(|poison_error| {
+        poison_error.into_inner()
+    });
+
+    *guard = enabled;
 }
 
 fn get_appname() -> String {
@@ -342,14 +352,23 @@ fn log_thread_function(settings_file_path: String,
                 match check_mdlogger_configuration(&settings) {
                     Ok(_) => {
                         init_mdlogger_mutex(&settings);
-                        let mut log_handlers = create_log_handlers(&settings);
+                        let mut log_handlers: Vec<Box<dyn LogHandler>> = create_log_handlers(&settings);
                         let mut running = true;
+
+                        let (answer_tx_channel, answer_rx_channel) = channel::<String>();
+                        let commands_thread_result = 
+                                create_external_commands_thread(&settings, answer_rx_channel);
+
                         log_thread_send_function(&log_thread_tx_channel, &"".to_string());
+                                                
                         while running {
                             match log_message_rx_channel.recv() {
                                 Ok(log_message) => {
                                     if log_message.get_message() != __FINALIZE_MSG__ {
-                                        if is_mdlogger_enabled() {
+                                        if log_message.get_message().starts_with(EXTERNAL_COMMNDS_MESSAGE) {
+                                            let command: String = log_message.get_message().clone();
+                                            execute_external_commands(&answer_tx_channel, command, &log_handlers, &mut settings);
+                                        } else if is_mdlogger_enabled() {
                                             let msg_type = log_message.get_msg_type();
                                             for log_handler in log_handlers.iter_mut() {
                                                 if log_handler.is_enabled() && log_handler.is_msg_type_enabled(msg_type) {
@@ -376,6 +395,8 @@ fn log_thread_function(settings_file_path: String,
                                 }
                             }
                         }
+                        
+                        join_create_external_commands_thread(commands_thread_result);
                     },
                     Err(error) => {
                         result = error;
@@ -483,12 +504,13 @@ pub fn initialize<P>(appname: &str, appversion: &str, settings_file_path: P) -> 
         FATAL_LOG_CONDVAR.get_or_init(|| { Condvar::new() });
         FINALIZE_CONDVAR.get_or_init(|| { Condvar::new() });
 
+        
         let (log_thread_tx_channel, log_thread_rx_channel) = channel::<String>();
         let (log_message_tx_channel, log_message_rx_channel) = channel::<LogMessage>();
         
         LOG_MESSAGE_TX_CHANNEL.get_or_init(|| { log_message_tx_channel });
-        let log_thread_builder = Builder::new().name("mdlogger-thread".to_string());
-        let path = settings_file_path.as_ref().display().to_string();
+        let log_thread_builder: Builder = Builder::new().name("mdlogger-thread".to_string());
+        let path: String = settings_file_path.as_ref().display().to_string();
         
         let _ = log_thread_builder.spawn(move|| {
             log_thread_function(path, log_thread_tx_channel, log_message_rx_channel)
