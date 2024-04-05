@@ -17,10 +17,10 @@ use std::time::Duration;
 use console::ConsoleLogHandlerFactory;
 use rollingfile::RollingFileLogHandlerFactory;
 use network::{NetworkLogHandlerFactory, UnixDomainLogHandlerFactory};
-use time::format_description;
+use time::{format_description, OffsetDateTime, UtcOffset};
 use constants::{DEFAULT_NEXT_VALUE, DEFAULT_PATTERN_VALUE, DEFAULT_TIMESTAMP_FORMAT, ENABLED_KEY, NEXT_KEY, PATTERN_KEY, ROOT_LOG_HANDLER_KEY, TIMESTAMP_FORMAT_KEY, TYPE_KEY};
 use interfaces::{LogHandler, LogHandlerFactory};
-use logmessage::LogMessage;
+use logmessage::{LocalOffset, LogMessage};
 use rssettings::{Settings, GLOBAL_SECTION};
 use types::LogMsgType;
 
@@ -46,6 +46,7 @@ static FATAL_LOG_CONDVAR: OnceLock<Condvar> = OnceLock::new();
 static FATAL_LOG_MUTEX: Mutex<bool> = Mutex::new(false); 
 static FINALIZE_CONDVAR: OnceLock<Condvar> = OnceLock::new();
 static FINALIZE_MUTEX: Mutex<bool> = Mutex::new(false); 
+static LOCAL_OFFSET: Mutex<UtcOffset> = Mutex::new(UtcOffset::UTC);
 
 mod macros {
 
@@ -236,6 +237,11 @@ fn log_thread_send_function(sender: &Sender<String>, message: &String) {
 
 
 fn check_global_configuration(settings: &Settings)  -> Result<(), String> {
+
+    if !settings.key_exists(GLOBAL_SECTION, ENABLED_KEY) {
+        return Err(format!("'{}' section: missing '{}' key", GLOBAL_SECTION, ENABLED_KEY));
+    }
+
     let pattern = settings.get(GLOBAL_SECTION, PATTERN_KEY, DEFAULT_PATTERN_VALUE.to_string());
     if pattern.error.len() > 0 {
         eprintln!("'{}', Warning: '{}'", pretty_function!(), pattern.error);
@@ -367,7 +373,7 @@ fn log_thread_function(settings_file_path: String,
                                     if log_message.get_message() != __FINALIZE_MSG__ {
                                         if log_message.get_message().starts_with(EXTERNAL_COMMNDS_MESSAGE) {
                                             let command: String = log_message.get_message().clone();
-                                            execute_external_commands(&answer_tx_channel, command, &log_handlers, &mut settings);
+                                            execute_external_commands(&answer_tx_channel, command, &mut log_handlers, &mut settings);
                                         } else if is_mdlogger_enabled() {
                                             let msg_type = log_message.get_msg_type();
                                             for log_handler in log_handlers.iter_mut() {
@@ -493,8 +499,13 @@ pub fn register_log_handler_factory(factory: Box<dyn LogHandlerFactory + Send>) 
 
 pub fn initialize<P>(appname: &str, appversion: &str, settings_file_path: P) -> Result<(), String> where P : AsRef<Path> {
     
-    
-    
+    {
+        let mut guard = LOCAL_OFFSET.lock().unwrap_or_else(|poison_error| {
+            poison_error.into_inner()
+        });
+        *guard = UtcOffset::local_offset_at(OffsetDateTime::UNIX_EPOCH).unwrap_or(UtcOffset::UTC);
+    }
+
     let mut result: Result<(), String> = Ok(());
 
     if !is_initialized() {
@@ -567,11 +578,20 @@ pub fn log(msg_type: LogMsgType,
         }
         return;
     }
+
+    let mut local_offset = LocalOffset::new();
+    {
+        let guard = LOCAL_OFFSET.lock().unwrap_or_else(|poison_error| {
+            poison_error.into_inner()
+        });
+        local_offset.set_hms(guard.as_hms());
+    }
     let log_message = LogMessage::new(
         msg_type, category.to_string(),
         file.to_string(), 
         function.to_string(),
-        line, message);
+        line, message,
+        local_offset);
     send_log_message(log_message);
     if msg_type == LogMsgType::FatalMsgType {
         wait_fatal_log_completed();

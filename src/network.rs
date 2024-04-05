@@ -17,7 +17,6 @@ use std::{
     str::FromStr
 };
 
-use serde::Serialize;
 use serde_json::{json, Value};
 use socket2::{Domain, SockAddr, Socket, Type};
 
@@ -234,17 +233,12 @@ impl LogHandlerFactory for NetworkLogHandlerFactory {
     }
 }
 
-#[derive(Serialize)]
-struct NetworkJsonConfig {
-    base: LogHandlerBase,
-    protocol: String,
-    remote_address: String
-} 
 
 struct NetworkLogHandler {
     base: LogHandlerBase,
     protocol: NetworkProtocol,
     remote_address: Option<SocketAddr>,
+    multicast_if: IpAddr,
     socket: Option<Socket>,
     is_connected: bool, // TCP Only
     errors_list: Vec<ErrorKind>
@@ -276,6 +270,7 @@ impl NetworkLogHandler {
                                     pattern, appname, appver),
             protocol,
             remote_address: None,
+            multicast_if,
             socket: None,
             is_connected: false,
             errors_list: vec![]
@@ -290,9 +285,9 @@ impl NetworkLogHandler {
             let socket = result.socket.unwrap();
             println!("Log handler '{}' socket created to send log to: {} port {}", 
                     result.base.get_name(), remote_address.to_string(), remote_port);
-            if is_multicast && !multicast_if.is_unspecified() {
-                let itf_index = network_index(&multicast_if);
-                match &multicast_if {
+            if is_multicast && !result.multicast_if.is_unspecified() {
+                let itf_index = network_index(&result.multicast_if);
+                match &result.multicast_if {
                     IpAddr::V4(interface) => {
                         if let Err(socket_error) = socket.set_multicast_if_v4(interface) {
                             eprintln!("Log handler '{}' cannot set IPV4 multicast interface: {}",
@@ -359,20 +354,35 @@ impl LogHandler for NetworkLogHandler {
     }
 
     fn get_config(&self) -> Value {
-        let config: NetworkJsonConfig = NetworkJsonConfig {
-            base: self.base.clone(),
-            protocol: self.protocol.to_string(),
-            remote_address: format!("{}", self.remote_address.unwrap_or(
-                SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 0u16)
-            ))
-        };
-        match serde_json::to_value::<NetworkJsonConfig>(config) {
-            Ok(value) => { value },
-            Err(error) => { 
-                let e = format!("{}", error);
-                json!({"name": self.base.get_name(), "error": e})
+        let mut config = self.base.get_config();
+        config.insert(String::from(PROTOCOL_KEY), json!(self.protocol.to_string()));
+        let remote_addres: String;
+        let mut remote_port: u16 = 0;
+        let mut multicast_if: String = String::new();
+        match &self.remote_address {
+            Some(addr) => {
+                remote_addres = addr.ip().to_string();
+                remote_port = addr.port().clone();
+                if addr.ip().is_multicast() {
+                    multicast_if = self.multicast_if.to_string();
+                }
+            },
+            None => {
+                remote_addres = String::from("None");
             }
-        }
+        } 
+        config.insert(String::from(REMOTE_ADDRESS_KEY), json!(remote_addres));
+        config.insert(String::from(REMOTE_PORT_KEY), json!(remote_port));
+        config.insert(String::from(MULTICAST_IF_KEY), json!(multicast_if));
+        Value::Object(config)
+    }
+
+    fn set_config(&mut self, key: &str, value: &Value) -> Result<(), String> {
+        if self.base.is_abaseconfig(key) {
+            self.base.set_config(key, value)?;
+        } else {
+        }    
+        Ok(())
     }
 
     fn log(&mut self, msg_type: &LogMsgType, log_message: &LogMessage) {
@@ -619,12 +629,6 @@ impl LogHandlerFactory for UnixDomainLogHandlerFactory {
     }
 }
 
-#[derive(Serialize)]
-struct UnixDomainJsonConfig {
-    base: LogHandlerBase,
-    protocol: String,
-    remote_address: String,
-}
 
 struct UnixDomainLogHandler {
     base: LogHandlerBase,
@@ -705,20 +709,19 @@ impl LogHandler for UnixDomainLogHandler {
     }
 
     fn get_config(&self) -> Value {
-        let config: UnixDomainJsonConfig = UnixDomainJsonConfig {
-            base: self.base.clone(),
-            protocol: self.protocol.to_string(),
-            remote_address: self.remote_address.clone()
-        };
-        match serde_json::to_value::<UnixDomainJsonConfig>(config) {
-            Ok(value) => { value },
-            Err(error) => { 
-                let e = format!("{}", error);
-                json!({"name": self.base.get_name(), "error": e})
-            }
-        }
+        let mut config = self.base.get_config();
+        config.insert(String::from(PROTOCOL_KEY), json!(self.protocol.to_string()));
+        config.insert(String::from(REMOTE_ADDRESS_KEY), json!(self.remote_address));
+        Value::Object(config)
     }
 
+    fn set_config(&mut self, key: &str, value: &Value) -> Result<(), String> {
+        if self.base.is_abaseconfig(key) {
+            self.base.set_config(key, value)?;
+        } else {
+        }    
+        Ok(())
+    }
 
     fn log(&mut self, msg_type: &LogMsgType, log_message: &LogMessage) {
         if self.is_enabled() && self.is_msg_type_enabled(msg_type) {

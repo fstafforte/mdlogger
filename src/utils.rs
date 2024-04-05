@@ -239,41 +239,49 @@ pub fn get_log_handler_common_parameters(enabled: &mut bool,
         }
 		*enabled = settings_enabled.value;
 
-        let mut log_handler_pattern = settings.get(log_handler_name, PATTERN_KEY, DEFAULT_PATTERN_VALUE.to_string());
-        if log_handler_pattern.error.len() > 0 {
+        let mut log_handler_pattern = settings.get(log_handler_name, PATTERN_KEY, String::new());
+        if log_handler_pattern.error.len() > 0 || log_handler_pattern.value.is_empty() {
             log_handler_pattern.value = settings.get(GLOBAL_SECTION, PATTERN_KEY, DEFAULT_PATTERN_VALUE.to_string()).value;
         }
 		*pattern = log_handler_pattern.value;
 
-        *timestamp_format = remove_quotes(
-            &settings.get(GLOBAL_SECTION, 
-                TIMESTAMP_FORMAT_KEY, 
-                DEFAULT_TIMESTAMP_FORMAT.to_string()).value);
-       
+		let mut ts_format = settings.get(log_handler_name, TIMESTAMP_FORMAT_KEY, String::new());
+		if ts_format.error.len() > 0 || ts_format.value.is_empty() {
+			ts_format.value = remove_quotes(
+				&settings.get(GLOBAL_SECTION, 
+					TIMESTAMP_FORMAT_KEY, 
+					DEFAULT_TIMESTAMP_FORMAT.to_string()).value);
+		}
+		*timestamp_format = ts_format.value;
+	    
 	    
         *msg_types_enabled = get_global_msg_types_enabled(settings, caller);
+
         let mut idx = 0usize;
         for msg_type_enabled_key in MSG_TYPE_ENABLED_KEYS {
-            let msg_type_enabled = settings.get(log_handler_name, msg_type_enabled_key, false);
-            if msg_type_enabled.error.len() == 0 {
-                msg_types_enabled[idx] = msg_type_enabled.value;
-            }
+			if settings.key_exists(log_handler_name, msg_type_enabled_key) {
+				let msg_type_enabled = settings.get(log_handler_name, msg_type_enabled_key, false);
+				if msg_type_enabled.error.len() == 0 {
+					msg_types_enabled[idx] = msg_type_enabled.value;
+				}
+			}
             idx = idx + 1;
         }
 
         *msg_types_text = get_global_msg_types_text(settings, caller);
         idx = 0usize;
-        for msg_type_text in MSG_TYPE_TEXT_KEYS {
-            let msg_type_text = settings.get(log_handler_name, msg_type_text, "???".to_string());
-            if msg_type_text.error.len() == 0 {
-                msg_types_text[idx] = msg_type_text.value;
-                idx = idx + 1;
-            }
+        for msg_type_text_key in MSG_TYPE_TEXT_KEYS {
+			if settings.key_exists(log_handler_name, msg_type_text_key) {
+				let msg_type_text = settings.get(log_handler_name, msg_type_text_key, "???".to_string());
+				if msg_type_text.error.len() == 0 && !msg_type_text.value.is_empty() {
+					msg_types_text[idx] = msg_type_text.value;
+				}
+			}
+			idx = idx + 1;
         }
-        
+
 
         *message_format = settings.get(log_handler_name, LOG_MESSAGE_FORMAT_KEY, DEFAULT_LOG_MESSAGE_FORMAT.to_string()).value;
-
 }
 
 
@@ -300,6 +308,17 @@ fn get_global_msg_types_text(settings: &Settings, caller: &str) -> [String; LOG_
 
 pub (crate) fn remove_quotes(s: &str) -> String {
 	s.trim_matches('\"').to_string()
+}
+
+pub(crate) fn add_quotes(s: &str) -> String {
+	let mut result = s.to_string();
+	if !s.starts_with('"') {
+		result.insert(0, '"')
+	}
+	if !s.ends_with('"') {
+		result.push('"');
+	}
+	result
 }
 
 pub fn network_interface_exists(ip: &str) -> bool {

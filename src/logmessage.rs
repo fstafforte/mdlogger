@@ -1,3 +1,4 @@
+use time::UtcOffset;
 use time::{format_description, OffsetDateTime, macros::format_description};
 use std::thread::current;
 use serde::Serialize;
@@ -37,9 +38,29 @@ impl TimeStamp {
     }
 }
 
+#[derive(Clone, Serialize)]
+pub struct LocalOffset {
+    hours: i8,
+    minutes: i8,
+    seconds: i8
+}
+
+impl LocalOffset {
+    pub (crate) fn new() -> Self {
+        Self { hours: 0i8, minutes: 0i8, seconds: 0i8 }
+    }
+
+    pub (crate) fn set_hms(&mut self, hms: (i8, i8, i8)) {
+        self.hours = hms.0;
+        self.minutes = hms.1;
+        self.seconds = hms.2;
+    }
+}
+
 #[derive(Serialize)]
 pub struct LogMessage {
     timestamp: TimeStamp,
+    local_offset: LocalOffset,
     thread_name: String,
     msg_type: LogMsgType,
     category: String,
@@ -55,10 +76,12 @@ impl LogMessage {
         file: String,
         function: String,
         line: u32,
-        message: String) -> Self {
+        message: String,
+        local_offset: LocalOffset) -> Self {
         let thread_name = current().name().unwrap_or("???").to_string();
         Self {
             timestamp: TimeStamp::now(),
+            local_offset,
             thread_name,
             msg_type,
             category,
@@ -121,18 +144,21 @@ impl LogMessage {
         let mut placeholder = String::from("");
         let pattern_len = pattern_chars.len(); 
 
-        let timestamp_nanos: i128 = (self.timestamp.seconds  as i128 * 1000_000_000) + self.timestamp.nanoseconds;
+        let timestamp_nanos: i128 = (self.timestamp.seconds as i128 * 1000000000i128) + 
+            (self.timestamp.nanoseconds % 1000000000i128);
 
         let offset_datetime = OffsetDateTime::from_unix_timestamp_nanos(timestamp_nanos).unwrap_or_else(|_e| {
             OffsetDateTime::now_utc()
         });
+
+        let local_offset = UtcOffset::from_hms(
+            self.local_offset.hours, self.local_offset.minutes, self.local_offset.seconds)
+            .unwrap_or(UtcOffset::UTC);
+
         let ts_format = format_description::parse(timestamp_format).unwrap_or_else(|_e| {
             format_description!("[year]-[month]-[day] [hour]:[minute]:[second].[subsecond digits:3] [offset_hour sign:mandatory]:[offset_second]").to_vec()
         });
 
-        let local_offset = OffsetDateTime::now_local().unwrap_or_else(|_e| {
-            OffsetDateTime::now_utc()
-        }).offset();
 
         let mut ts_string = offset_datetime.format(&ts_format).unwrap_or_else(|e| {
             format!("{:#}", e)

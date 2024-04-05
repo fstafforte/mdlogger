@@ -5,7 +5,6 @@ use crate::{
 };
 use rssettings::Settings;
 
-use serde::Serialize;
 use serde_json::{json, Value};
 use time::{
     macros::format_description, 
@@ -239,7 +238,7 @@ impl LogHandlerFactory for RollingFileLogHandlerFactory {
             extension = format!(".{}", extension);
         }
         
-        let mut maxsize = settings.get(log_handler_name, MAXSIZE_KEY, 1024u64).value;
+        let base_maxsize = settings.get(log_handler_name, MAXSIZE_KEY, 1024u64).value;
         let sizeum = settings.get(log_handler_name, SIZEUM_KEY, SIZEUM_MEGABYTE.to_string()).value;
         let factor : u64;
         match sizeum.parse::<SizeUm>() {
@@ -250,7 +249,7 @@ impl LogHandlerFactory for RollingFileLogHandlerFactory {
                 factor = 1024u64;
             }
         }
-        maxsize = maxsize * factor;
+        let maxsize = base_maxsize * factor;
         let depth = settings.get(log_handler_name, DEPTH_KEY, 3u32).value;
 
 
@@ -293,17 +292,20 @@ impl LogHandlerFactory for RollingFileLogHandlerFactory {
             basename,
             extension,
             maxsize,
+            base_maxsize,
+            sizeum,
             depth))
     }
 }
 
-#[derive(Serialize, Clone)]
 struct RollingFileLogHandler {
     base: LogHandlerBase,
     directory: String,
     basename: String,
     extension: String,
     maxsize: u64,
+    base_maxsize: u64,
+    sizeum: String,
     depth: u32,
     current_depth: u32,
 }
@@ -322,6 +324,8 @@ impl RollingFileLogHandler{
         basename: String,
         extension: String,
         maxsize: u64,
+        base_maxsize: u64,
+        sizeum: String,    
         depth: u32
     ) -> Self {
         Self {
@@ -336,6 +340,8 @@ impl RollingFileLogHandler{
             basename,
             extension,
             maxsize,
+            base_maxsize,
+            sizeum,
             depth,
             current_depth: 0
         }
@@ -371,13 +377,23 @@ impl LogHandler for RollingFileLogHandler {
     }
 
     fn get_config(&self) -> Value {
-        match serde_json::to_value::<RollingFileLogHandler>(self.clone()) {
-            Ok(value) => { value },
-            Err(error) => { 
-                let e = format!("{}", error);
-                json!({"name": self.base.get_name(), "error": e})
-            }
-        }
+        let mut config = self.base.get_config();
+        config.insert(String::from(DIRECTORY_KEY), json!(self.directory));
+        config.insert(String::from(BASENAME_KEY), json!(self.basename));
+        config.insert(String::from(EXTENSION_KEY), json!(self.extension));
+        config.insert(String::from(MAXSIZE_KEY), json!(self.base_maxsize));
+        config.insert(String::from(SIZEUM_KEY), json!(self.sizeum));
+
+
+        Value::Object(config)
+    }
+
+    fn set_config(&mut self, key: &str, value: &Value) -> Result<(), String> {
+        if self.base.is_abaseconfig(key) {
+            self.base.set_config(key, value)?;
+        } else {
+        }    
+        Ok(())
     }
 
     fn log(&mut self, msg_type: &LogMsgType, log_message: &LogMessage) {

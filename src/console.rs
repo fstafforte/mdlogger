@@ -1,7 +1,7 @@
+use std::fmt::Display;
 use std::str::FromStr;
 use rssettings::Settings;
-use serde::Serialize;
-use serde_json::{json, Value};
+use serde_json::{json, Map, Value};
 
 
 
@@ -35,11 +35,26 @@ const REDIRECTION_KEYS: [&str; LOG_MSG_TYPE_NUM] = [
     FATAL_REDIRECTION_KEY,
 ];
 
-#[derive(Serialize, Clone)]
 pub (self) enum Redirection {
     StdOut,
     StdErr,
     Both
+}
+
+impl Display for Redirection {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::StdOut => {
+                write!(f, "{}", VALID_REDIRECTIONS[Self::StdOut as usize])
+            },
+            Self::StdErr => {
+                write!(f, "{}", VALID_REDIRECTIONS[Self::StdErr as usize])
+            },
+            Self::Both => {
+                write!(f, "{}", VALID_REDIRECTIONS[Self::Both as usize])
+            }
+        }
+    }
 }
 
 const REDIRECTION_NUM: usize = Redirection::Both as usize + 1usize;
@@ -61,6 +76,12 @@ impl ParseRedirectionError {
             error: format!("<{}> is not a valid console redirection, valid are ({})", s, 
                 VALID_REDIRECTIONS.join(", "))
         }
+    }
+}
+
+impl Display for ParseRedirectionError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.error)
     }
 }
 
@@ -165,7 +186,6 @@ impl LogHandlerFactory for ConsoleLogHandlerFactory {
     }
 }
 
-#[derive(Serialize, Clone)]
 pub struct ConsoleLogHandler {
     base: LogHandlerBase,
     redirections: [Redirection; LOG_MSG_TYPE_NUM]
@@ -212,15 +232,56 @@ impl LogHandler for ConsoleLogHandler {
     }
 
     fn get_config(&self) -> Value {
-        match serde_json::to_value::<ConsoleLogHandler>(self.clone()) {
-            Ok(value) => { value },
-            Err(error) => { 
-                let e = format!("{}", error);
-                json!({"name": self.base.get_name(), "error": e})
-            }
-        }
+        let mut config = Map::new();
+        let mut base_config = self.base.get_config();
+        config.append( &mut base_config);
+        config.insert(String::from(DEBUG_REDIRECTION_KEY), json!(self.redirections[LogMsgType::DebugMsgType as usize].to_string()));
+        config.insert(String::from(INFO_REDIRECTION_KEY), json!(self.redirections[LogMsgType::DebugMsgType as usize].to_string()));
+        config.insert(String::from(WARNING_REDIRECTION_KEY), json!(self.redirections[LogMsgType::DebugMsgType as usize].to_string()));
+        config.insert(String::from(CRITICAL_REDIRECTION_KEY), json!(self.redirections[LogMsgType::DebugMsgType as usize].to_string()));
+        config.insert(String::from(FATAL_REDIRECTION_KEY), json!(self.redirections[LogMsgType::DebugMsgType as usize].to_string()));
+        Value::Object(config)
     }
 
+    fn set_config(&mut self, key: &str, value: &Value) -> Result<(), String> {
+        if self.base.is_abaseconfig(key) {
+            self.base.set_config(key, value)?;
+        } else {
+            if !REDIRECTION_KEYS.contains(&key) {
+                return Err(format!("Log handler '{}' key'{}' is not valid, valid are {}",
+                            self.base.get_name(), key, REDIRECTION_KEYS.join(",")));
+            }
+            match value.as_str() {
+                Some(val) => {
+                    match val.parse::<Redirection>() {
+                        Ok(redirection) => {
+                            if DEBUG_REDIRECTION_KEY == key {
+                                self.redirections[LogMsgType::DebugMsgType as usize] = redirection;
+                            } else if INFO_REDIRECTION_KEY == key {
+                                self.redirections[LogMsgType::InfoMsgType as usize] = redirection;
+                            } else if WARNING_REDIRECTION_KEY == key {
+                                self.redirections[LogMsgType::WarningMsgType as usize] = redirection;
+                            } else if CRITICAL_REDIRECTION_KEY == key {
+                                self.redirections[LogMsgType::CriticalMsgType as usize] = redirection;
+                            } else {
+                                self.redirections[LogMsgType::FatalMsgType as usize] = redirection;
+                            }
+                        },
+                        Err(parse_error) => {
+                            return Err(format!("Log handler '{}' key'{}' value '{}' error: {}",
+                                self.base.get_name(), key, val, parse_error));
+    
+                        }
+                    } 
+                },
+                None => {
+                    return Err(format!("Log handler '{}' key'{}' needs a string value",
+                        self.base.get_name(), key));
+                }
+            }
+        }
+        Ok(())
+    }
 
     fn log(&mut self, msg_type: &LogMsgType, log_message: &LogMessage) {
         if self.is_enabled() && self.is_msg_type_enabled(msg_type) {

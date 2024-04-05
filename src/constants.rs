@@ -16,7 +16,7 @@ pub const DEBUG_ENABLED_KEY: &str = "debug.enabled";
 pub const INFO_ENABLED_KEY: &str = "info.enabled";
 pub const WARNING_ENABLED_KEY: &str = "warning.enabled";
 pub const CRITICAL_ENABLED_KEY: &str = "critical.enabled";
-
+pub const FATAL_ENABLED_KEY: &str = "fatal.eanbled";
 
 pub const DEBUG_TEXT_KEY: &str = "debug.text";
 pub const INFO_TEXT_KEY: &str = "info.text";

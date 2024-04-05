@@ -5,20 +5,20 @@ use std::str::from_utf8;
 use std::sync::mpsc::{Receiver, Sender};
 use std::thread::Builder;
 use std::time::Duration;
+use std::usize;
 use std::{sync::{Arc, Mutex}, thread::JoinHandle};
 use rssettings::Settings;
-
+use time::format_description; 
 use rssettings::GLOBAL_SECTION;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 use socket2::{Domain, Socket, Type};
 
 use crate::constants::{
-    CRITICAL_ENABLED_KEY, CRITICAL_TEXT_KEY, DEBUG_ENABLED_KEY, DEBUG_TEXT_KEY, DEFAULT_CRITICAL_TEXT, DEFAULT_DEBUG_TEXT, DEFAULT_FATAL_TEXT, DEFAULT_INFO_TEXT, DEFAULT_PATTERN_VALUE, DEFAULT_TIMESTAMP_FORMAT, DEFAULT_WARNING_TEXT, ENABLED_KEY, FATAL_TEXT_KEY, INFO_ENABLED_KEY, INFO_TEXT_KEY, PATTERN_KEY, ROOT_LOG_HANDLER_KEY, TIMESTAMP_FORMAT_KEY, WARNING_ENABLED_KEY, WARNING_TEXT_KEY};
+    CRITICAL_ENABLED_KEY, CRITICAL_TEXT_KEY, DEBUG_ENABLED_KEY, DEBUG_TEXT_KEY, DEFAULT_CRITICAL_TEXT, DEFAULT_DEBUG_TEXT, DEFAULT_FATAL_TEXT, DEFAULT_INFO_TEXT, DEFAULT_PATTERN_VALUE, DEFAULT_TIMESTAMP_FORMAT, DEFAULT_WARNING_TEXT, ENABLED_KEY, FATAL_TEXT_KEY, INFO_ENABLED_KEY, INFO_TEXT_KEY, MSG_TYPE_ENABLED_KEYS, MSG_TYPE_TEXT_KEYS, PATTERN_KEY, ROOT_LOG_HANDLER_KEY, TIMESTAMP_FORMAT_KEY, WARNING_ENABLED_KEY, WARNING_TEXT_KEY};
 use crate::interfaces::LogHandler;
-
 use crate::{format, mdlogger_cinfo, pretty_function, set_mdlogger_enabled};
-use crate::utils::{network_index, network_interface_exists};
+use crate::utils::{add_quotes, check_message_pattern, network_index, network_interface_exists, remove_quotes};
 
 const EXTERNAL_COMMNDS_THREAD_NAME: &str = "ExternalCommandsThread";
 pub(crate) const EXTERNAL_COMMNDS_MESSAGE: &str = "__EXTERNAL_COMMND_MESSAGE__";
@@ -39,9 +39,12 @@ const VALID_EXT_CMDS: [&str; 3] = [
     EXT_CMD_SET_HANDLER
 ];
 
-pub const PARAMETER_KEY_NAME: &str = "name";
+pub const PARAMETER_KEY_NAME: &str = "key";
 pub const PARAMETER_VALUE_NAME: &str = "value";
+pub const PARAMETER_LOG_HANDLER: &str = "log_handler";
 pub const PARAMETER_SAVE_NAME: &str = "save";
+pub const PARAMETER_NEW_VALUE_NAME: &str = "new-value";
+
 
 
 #[derive(Deserialize)]
@@ -57,10 +60,23 @@ struct ExternalCommand {
 }
 
 impl ExternalCommand {
-    fn get_paramter(&self, name: &str) -> Option<Value> {
+
+    fn get_paramter_numbers(&self) -> usize {
+        self.parameters.len()
+    }
+
+    fn get_parameter_byidx(&self, idx: usize) -> Result<(String, Value), String> {
+        if idx < self.parameters.len() {
+            return Ok((self.parameters[idx].name.clone(), self.parameters[idx].value.clone()));
+        }
+        Err(format!("index value '{}' out of range 0..{}", idx, self.parameters.len()))
+    }
+
+
+    fn get_parameter_byname(&self, log_handler_name: &str) -> Option<(String, Value)> {
         for param in &self.parameters {
-            if param.name == name {
-                return Some(param.value.clone());
+            if param.name == log_handler_name {
+                return Some((param.name.clone(), param.value.clone()));
             } 
         }
         None
@@ -77,7 +93,7 @@ enum AckNack {
 #[derive(Serialize)]
 struct ExternalCommandAnswer {
     ack_nack: AckNack,
-    nack_reason: String,
+    reason: String,
     value: Value, 
 }
 
@@ -368,13 +384,13 @@ pub(crate) fn set_running(running: &Arc<Mutex<bool>>, value: bool) {
 
 pub(crate) fn execute_external_commands(answer_tx_channel: &Sender<String>,
                                         command: String,
-                                        log_handlers: &Vec<Box<dyn LogHandler>>,
+                                        log_handlers: &mut Vec<Box<dyn LogHandler>>,
                                         settings: &mut Settings) {
     let json_command = command.replace(EXTERNAL_COMMNDS_MESSAGE, "").
-                                            replace(EXTERNAL_COMMNDS_MESSAGE_SEP, "");
+                                            replacen(EXTERNAL_COMMNDS_MESSAGE_SEP, "", 1);
     
     let mut answer = ExternalCommandAnswer {ack_nack: AckNack::ACK, 
-        nack_reason: String::new(),
+        reason: String::new(),
         value: Value::Null};
     match serde_json::from_str::<ExternalCommand>(&json_command) {
         Ok(external_command) => {
@@ -389,18 +405,18 @@ pub(crate) fn execute_external_commands(answer_tx_channel: &Sender<String>,
                 }
             } else {
                 answer.ack_nack = AckNack::NACK;
-                answer.nack_reason = format!("{} is not a valid command valid are: {}", 
+                answer.reason = format!("{} is not a valid command valid are: {}", 
                         external_command.command, VALID_EXT_CMDS.join(", "));
             }
         },
         Err(error) => {
             answer.ack_nack = AckNack::NACK;
-            answer.nack_reason = format!("invalid json format: {}", error);
+            answer.reason = format!("invalid json format: {}", error);
         }
     }
     let answer = serde_json::to_string(&answer).unwrap_or_else(|e| {
         eprintln!("{} wrong external command answer serializing: {}", EXTERNAL_COMMNDS_THREAD_NAME, e);
-        format!("{{ \"ack_nack\": \"NACK\", \"nack_reason\": \"{}\" }}", e)
+        format!("{{ \"ack_nack\": \"NACK\", \"reason\": \"{}\" }}", e)
     });
 
     if let Err(error) = answer_tx_channel.send(answer) {
@@ -470,83 +486,244 @@ fn get_global(settings: &Settings) -> Value {
 }
 
 
-fn has_tobe_saved(external_command: &ExternalCommand,
-                    answer: &mut ExternalCommandAnswer) -> bool {
-    let mut result = false;
-    if let Some(_save) = external_command.get_paramter(PARAMETER_SAVE_NAME) {
-        if let Some(value) = external_command.get_paramter(PARAMETER_VALUE_NAME) {
-            if value.is_boolean() {
-                result = value.as_bool().unwrap_or(false); 
-            } else {
-                answer.ack_nack = AckNack::PARTIALACK;
-                answer.nack_reason = format!("parameter {} has not a boolean value", PARAMETER_SAVE_NAME);    
-            }
-        } else {
-            answer.ack_nack = AckNack::PARTIALACK;
-            answer.nack_reason = format!("parameter {} missing {}", PARAMETER_SAVE_NAME, PARAMETER_VALUE_NAME);
-        }
-    }
-    return result;
-}
 
-fn exec_set_global_command(external_command: &ExternalCommand, 
+fn exec_set_global_command(external_command: &ExternalCommand,
                         answer: &mut ExternalCommandAnswer,
                         settings: &mut Settings) {
 
-    if external_command.parameters.len() > 0 {
-
-        if let Some(key) = external_command.get_paramter(PARAMETER_KEY_NAME) {
-            if let Some(value) = external_command.get_paramter(PARAMETER_VALUE_NAME) {
-                if key.is_string() {
-                    if !value.is_array() && !value.is_null() && !value.is_object() {
-                        let key = key.as_str().unwrap_or("");
-                        if settings.key_exists(GLOBAL_SECTION, key) {
-                            if ENABLED_KEY == key {
-                                if let Some(enabled) = value.as_bool() {
-                                    set_mdlogger_enabled(enabled);
-                                    answer.ack_nack = AckNack::ACK;                                    
-                                    if has_tobe_saved(external_command, answer) {
-                                        if let Err(error) = settings.set(GLOBAL_SECTION, key, enabled) {
-                                            answer.ack_nack = AckNack::PARTIALACK;
-                                            answer.nack_reason = error;
-                                        }
-                                    }
+    if external_command.get_paramter_numbers() > 0 {
+        match  external_command.get_parameter_byidx(0) {
+            Ok(key_value) => {
+                if !key_value.1.is_array() && !key_value.1.is_null() && !key_value.1.is_object() {
+                    if settings.key_exists(GLOBAL_SECTION, &key_value.0) {
+                        if ENABLED_KEY == &key_value.0 {
+                            if let Some(enabled) = key_value.1.as_bool() {
+                                set_mdlogger_enabled(enabled);
+                                answer.ack_nack = AckNack::ACK;                                    
+                                if let Err(error) = settings.set(GLOBAL_SECTION, &key_value.0, enabled) {
+                                    answer.ack_nack = AckNack::PARTIALACK;
+                                    answer.reason = error;
                                 } else {
-                                    answer.ack_nack = AckNack::NACK;
-                                    answer.nack_reason = format!("{} need a boolean value", key)
+                                    if let Err(error) = settings.save() {
+                                        answer.ack_nack = AckNack::PARTIALACK;
+                                        answer.reason = format!("{} changed but and error occured during saving action: {}",
+                                                            ENABLED_KEY, error);    
+                                    } else {
+                                        answer.reason = format!("{} changed and saved",
+                                                            ENABLED_KEY);
+                                    }
                                 }
+                            } else {
+                                answer.ack_nack = AckNack::NACK;
+                                answer.reason = format!("{} need a boolean value", key_value.0)
+                            }
+                        } else if PATTERN_KEY == &key_value.0 {
+                            if let Some(pattern) = key_value.1.as_str() {           
+                                let pattern = String::from(pattern);                   
+                                if let Err(error) = check_message_pattern(&pattern) {
+                                    answer.ack_nack = AckNack::NACK;
+                                    answer.reason = error;
+                                } else {
+                                    if let Err(error) = settings.set(GLOBAL_SECTION, PATTERN_KEY, pattern) {
+                                        answer.ack_nack = AckNack::NACK;
+                                        answer.reason = error;
+                                    } else {
+                                        if let Err(error) = settings.save() {
+                                            answer.ack_nack = AckNack::PARTIALACK;
+                                            answer.reason = format!("{} changed but and error occured during saving action: {}",
+                                                            PATTERN_KEY, error);    
+                                        } else {
+                                            answer.ack_nack = AckNack::ACK;
+                                            answer.reason = format!("{} changed and saved, it will be applid to all log handlers not having their own log {} on next running",
+                                                            PATTERN_KEY, PATTERN_KEY);
+                                        }                                            
+                                    }
+                                }
+                            } else {
+                                answer.ack_nack = AckNack::NACK;
+                                answer.reason = format!("{} need a string value", key_value.0)        
+                            }
+                        } else if TIMESTAMP_FORMAT_KEY == &key_value.0 {
+                            if let Some(timestamp_format) = key_value.1.as_str() {
+                                let no_quotes_timestamp_format = remove_quotes(timestamp_format); 
+                                if let Err(error) = format_description::parse(&no_quotes_timestamp_format) {
+                                    answer.ack_nack = AckNack::NACK;
+                                    answer.reason = format!("{} invalid format description: {}", TIMESTAMP_FORMAT_KEY,
+                                            error);
+                                } else {
+                                    if let Err(error) = settings.set(GLOBAL_SECTION, TIMESTAMP_FORMAT_KEY, add_quotes(timestamp_format)) {
+                                        answer.ack_nack = AckNack::NACK;
+                                        answer.reason = error;
+                                    } else {
+                                        answer.ack_nack = AckNack::ACK;
+                                        if let Err(error) = settings.save() {
+                                            answer.ack_nack = AckNack::PARTIALACK;
+                                            answer.reason = format!("{} changed but and error occured during saving action: {}",
+                                                            PATTERN_KEY, error);    
+                                        } else {
+                                            answer.ack_nack = AckNack::ACK;
+                                            answer.reason = format!("{} changed and saved, it will be applid to all log handlers not having their own log {} on next running",
+                                                            PATTERN_KEY, PATTERN_KEY);
+                                        }                                            
+                                    }
+                                }
+                            } else {
+                                answer.ack_nack = AckNack::NACK;
+                                answer.reason = format!("{} need a string value", key_value.0)        
+                            }
+                        } else if MSG_TYPE_ENABLED_KEYS.contains(&key_value.0.as_str()) {
+                            if let Some(enabled) = key_value.1.as_bool() {
+                                if let Err(error) = settings.set(GLOBAL_SECTION, key_value.0.as_str(), enabled) {
+                                    answer.ack_nack = AckNack::NACK;
+                                    answer.reason = error;
+                                } else {
+                                    let key = key_value.0.as_str();
+                                    if let Err(error) = settings.save() {
+                                        answer.ack_nack = AckNack::PARTIALACK;
+                                        answer.reason = format!("{} changed but and error occured during saving action: {}",
+                                                            key, error);    
+                                    } else {
+                                        answer.ack_nack = AckNack::ACK;
+                                        answer.reason = format!("{} changed and saved, it will be applid to all log handlers not having their own log {} on next running",
+                                                            key, key);
+                                    }
+                                }           
+                            } else {
+                                answer.ack_nack = AckNack::NACK;
+                                answer.reason = format!("{} need a boolean value", key_value.0)        
+                            }
+                        } else if MSG_TYPE_TEXT_KEYS.contains(&key_value.0.as_str()) {
+                            if let Some(text) = key_value.1.as_str() {
+                                if let Err(error) = settings.set(GLOBAL_SECTION, key_value.0.as_str(), text.to_string()) {
+                                    answer.ack_nack = AckNack::NACK;
+                                    answer.reason = error;                                    
+                                } else {
+                                    let key = key_value.0.as_str();
+                                    if let Err(error) = settings.save() {
+                                        answer.ack_nack = AckNack::PARTIALACK;
+                                        answer.reason = format!("{} changed but and error occured during saving action: {}",
+                                                            key, error);    
+                                    } else {
+                                        answer.ack_nack = AckNack::ACK;
+                                        answer.reason = format!("{} changed and saved, it will be applid to all log handlers not having their own log {} on next running",
+                                                            key, key);
+                                    }
+                                }
+                            } else {
+                                answer.ack_nack = AckNack::NACK;
+                                answer.reason = format!("{} need a string value", key_value.0)        
                             }
                         } else {
                             answer.ack_nack = AckNack::NACK;
-                            answer.nack_reason = format!("parameter {} => {} not found", 
-                                PARAMETER_KEY_NAME, key);    
-                            }
+                            answer.reason = format!("{} cannot be changed runtime", key_value.0)
+                        }
                     } else {
                         answer.ack_nack = AckNack::NACK;
-                        answer.nack_reason = format!("parameter {} cannot be an array nor a null nor an object", PARAMETER_VALUE_NAME);    
+                        answer.reason = format!("parameter {} => '{}' not found", 
+                            PARAMETER_KEY_NAME, key_value.0);    
                     }
                 } else {
                     answer.ack_nack = AckNack::NACK;
-                    answer.nack_reason = format!("parameter {} has to be a string", PARAMETER_KEY_NAME);    
+                    answer.reason = format!("parameter {} cannot be an array nor a null nor an object", PARAMETER_VALUE_NAME);    
                 }
-            } else {
+            },
+            Err(error) => {
                 answer.ack_nack = AckNack::NACK;
-                answer.nack_reason = format!("missing {} parameter", PARAMETER_VALUE_NAME);    
+                answer.reason = error;
             }
-        } else {
-            answer.ack_nack = AckNack::NACK;
-            answer.nack_reason = format!("missing {} parameter", PARAMETER_KEY_NAME);
-        }
-
+        } // match  external_command.get_parameter_byidx(0) 
     } else {
         answer.ack_nack = AckNack::NACK;
-        answer.nack_reason = format!("command '{}' needs 1 parameter at least", external_command.command);
+        answer.reason = format!("command '{}' needs 1 parameter at least", external_command.command);
     }
 }
 
 fn exec_set_handler_command(external_command: &ExternalCommand,
-                        log_handlers: &Vec<Box<dyn LogHandler>>,
+                        log_handlers: &mut Vec<Box<dyn LogHandler>>,
                         answer: &mut ExternalCommandAnswer,
                         settings: &mut Settings) {
+    if external_command.get_paramter_numbers() > 2 {
+        match  external_command.get_parameter_byname(PARAMETER_LOG_HANDLER) {
+            Some(log_handler_name_value) => {
+                if let Some(log_handler_name) = log_handler_name_value.1.as_str() {
+                    match  external_command.get_parameter_byname(PARAMETER_KEY_NAME) {
+                        Some(key_value) => {
+                            if let Some(key) = key_value.1.as_str() {
+                                if settings.key_exists(log_handler_name, key) {
+                                    match external_command.get_parameter_byname(PARAMETER_NEW_VALUE_NAME) {
+                                        Some(new_value_param) => {
+                                            let mut iter = log_handlers.iter_mut();
+                                            while let Some(log_handler) = iter.next() {
+                                                if log_handler.get_name() == log_handler_name {
+                                                    if let Err(error) = log_handler.set_config(key, &new_value_param.1) {
+                                                        answer.ack_nack = AckNack::NACK;
+                                                        answer.reason = format!("Log handler '{}' parameter '{}' error: {}", log_handler_name, key, error);
+                                                    } else {
+                                                        if let Some(save) = external_command.get_parameter_byname(PARAMETER_SAVE_NAME) {
+                                                            match save.1.as_bool() {
+                                                                Some(save_value) => {
+                                                                    if let Err(error) = settings.set(log_handler_name, key, save_value) {
+                                                                        answer.ack_nack = AckNack::PARTIALACK;
+                                                                        answer.reason = format!("Log handler {} key {} changed, but an error occured while settings its new value: {}",
+                                                                                            log_handler_name, key, error);    
+                                                                    } else {
+                                                                        if save_value {
+                                                                            if let Err(error) = settings.save() {
+                                                                                answer.ack_nack = AckNack::PARTIALACK;
+                                                                                answer.reason = format!("Log handler {} key {} changed, but an error occured while saving its new value: {}",
+                                                                                                    log_handler_name, key, error);
+                                                                            }
+                                                                            answer.ack_nack = AckNack::ACK;
+                                                                        }
+                                                                    }
+                                                                }
+                                                                None => {
+                                                                    answer.ack_nack = AckNack::PARTIALACK;
+                                                                    answer.reason = format!("Log handler {} key {} changed, but not saved because {} needs a boolean value",
+                                                                                        log_handler_name, key, PARAMETER_SAVE_NAME);
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                    break;
+                                                }
+                                            }                                                    
+                                        }
+                                        None => {
+                                            answer.ack_nack = AckNack::NACK;
+                                            answer.reason = format!("Log handler '{}' parameter '{}' missing {}", 
+                                                    log_handler_name, key, PARAMETER_NEW_VALUE_NAME);    
 
+                                        }
+                                    }
+                                } else {
+                                    answer.ack_nack = AckNack::NACK;
+                                    answer.reason = format!("Log handler '{}' parameter '{}' does not exist", 
+                                                        log_handler_name, key);    
+                                }
+                            } else {
+                                answer.ack_nack = AckNack::NACK;
+                                answer.reason = format!("Log handler '{}' parameter log_handler_name as to be a string",
+                                                    log_handler_name);    
+                            }
+                        }, 
+                        None => {
+                            answer.ack_nack = AckNack::NACK;
+                            answer.reason = format!("Log handler {} missing {}", log_handler_name, PARAMETER_KEY_NAME);
+                        }            
+                    }
+                } else {
+                    answer.ack_nack = AckNack::NACK;
+                    answer.reason = format!("Log handler log_handler_name has to be a string value");
+                }
+            },
+            None => {
+                answer.ack_nack = AckNack::NACK;
+                answer.reason = format!("{} not found", PARAMETER_LOG_HANDLER);
+            }            
+        } // match  external_command.get_parameter_byidx(0) 
+    } else {
+        answer.ack_nack = AckNack::NACK;
+        answer.reason = format!("command '{}' needs 2 parameter at least", external_command.command);
+    }
 }
