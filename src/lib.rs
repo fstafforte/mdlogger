@@ -18,7 +18,7 @@ use console::ConsoleLogHandlerFactory;
 use rollingfile::RollingFileLogHandlerFactory;
 use network::{NetworkLogHandlerFactory, UnixDomainLogHandlerFactory};
 use time::{format_description, OffsetDateTime, UtcOffset};
-use constants::{DEFAULT_NEXT_VALUE, DEFAULT_PATTERN_VALUE, DEFAULT_TIMESTAMP_FORMAT, ENABLED_KEY, NEXT_KEY, PATTERN_KEY, ROOT_LOG_HANDLER_KEY, TIMESTAMP_FORMAT_KEY, TYPE_KEY};
+use constants::{DEFAULT_NEXT_VALUE, DEFAULT_PATTERN_VALUE, DEFAULT_TIMESTAMP_FORMAT, ENABLED_KEY, MSG_TYPE_ENABLED_KEYS, MSG_TYPE_TEXT_KEYS, NEXT_KEY, PATTERN_KEY, ROOT_LOG_HANDLER_KEY, TIMESTAMP_FORMAT_KEY, TYPE_KEY};
 use interfaces::{LogHandler, LogHandlerFactory};
 use logmessage::{LocalOffset, LogMessage};
 use rssettings::{Settings, GLOBAL_SECTION};
@@ -248,6 +248,22 @@ fn check_global_configuration(settings: &Settings)  -> Result<(), String> {
     }
 
     check_message_pattern(&pattern.value)?;
+
+    for key in MSG_TYPE_ENABLED_KEYS {
+        if !settings.key_exists(GLOBAL_SECTION, key) {
+            return Err(format!("'{}' section: missing '{}' key", GLOBAL_SECTION, key));
+        }
+    }
+
+    for key in MSG_TYPE_TEXT_KEYS {
+        if !settings.key_exists(GLOBAL_SECTION, key) {
+            return Err(format!("'{}' section: missing '{}' key", GLOBAL_SECTION, key));
+        }
+    }
+
+    if !settings.key_exists(GLOBAL_SECTION, TIMESTAMP_FORMAT_KEY) {
+        return Err(format!("'{}' section: missing '{}' key", GLOBAL_SECTION, TIMESTAMP_FORMAT_KEY));
+    }
 
     let timestamp_format = remove_quotes(&settings.get(GLOBAL_SECTION, 
         TIMESTAMP_FORMAT_KEY, 
