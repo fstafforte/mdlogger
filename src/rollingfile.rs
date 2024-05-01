@@ -3,6 +3,7 @@ use crate::{
         check_log_handler_common_parameters, check_pattern, get_log_handler_common_parameters
     }
 };
+use regex::Regex;
 use rssettings::Settings;
 
 use serde_json::{json, Value};
@@ -11,12 +12,7 @@ use time::{
     OffsetDateTime
 };
 use std::{ 
-    fmt::Display, 
-    fs::{create_dir, metadata, read_dir, remove_file, OpenOptions}, 
-    path::Path, 
-    result::Result, 
-    str::FromStr,
-    io::Write
+    fmt::Display, fs::{create_dir, metadata, read_dir, remove_file, OpenOptions}, io::Write, path::Path, result::Result, str::FromStr
 };
 
 
@@ -27,7 +23,6 @@ const DEFAULT_DIRECTORY: &str = "./";
 const BASENAME_KEY: &str = "basename";
 const EXTENSION_KEY: &str = "extension"; 
 const MAXSIZE_KEY: &str = "maxsize";
-const SIZEUM_KEY: &str = "sizeum";
 const DEPTH_KEY: &str = "depth";
 
 
@@ -117,49 +112,48 @@ impl FromStr for SizeUm {
     }
 }
 
+fn replace_basename_placeholder(log_handler_name: &str, 
+                                type_name: &str, basename: &mut String, 
+                                appname: &str) {
+    let mut idx = 0usize;
+    for valid_placeholder in VALID_BASENAME_PLACEHOLDERS {
+        let placeholder = format!("%{{{}}}", valid_placeholder);
+        if basename.contains(&placeholder) {
+            match idx {
+                BASENAME_APPNAME_PLACEHOLDER_IDX => {
+                    *basename = basename.replace(&placeholder, appname);
+                },
+                BASENAME_DATETIMEUTC_PLACEHOLDER_IDX => {
+                    let datetime = OffsetDateTime::now_utc();
+                    let ts_format = format_description!("[year][month][day]_[hour][minute][second]_[offset_hour sign:mandatory][offset_second]").to_vec();
+                    let ts_string = datetime.format(&ts_format).unwrap_or_else(|e| {
+                        format!("{:#}", e)
+                    });
+                    *basename = basename.replace(&placeholder, &ts_string);
+                },
+                BASENAME_DATETIMELOC_PLACEHOLDER_IDX => {
+                    let datetime = OffsetDateTime::now_local().unwrap_or_else(|error| {
+                        eprintln!("Log handler '{}' type '{}' error: {} utc time ussed", log_handler_name, type_name, error);
+                        OffsetDateTime::now_utc()
+                    });
+                    let ts_format = format_description!("[year][month][day]_[hour][minute][second]_[offset_hour sign:mandatory][offset_second]").to_vec();
+                    let ts_string = datetime.format(&ts_format).unwrap_or_else(|e| {
+                        format!("{:#}", e)
+                    });
+                    *basename = basename.replace(&placeholder, &ts_string);
+                },
+                _ => {}                    
+            }
+            idx = idx + 1;
+        }
+    }
+}
+
 
 pub (crate) struct RollingFileLogHandlerFactory {
 
 }
 
-impl RollingFileLogHandlerFactory {
-    fn replace_basename_placeholder(&self, log_handler_name: &str, 
-                                    type_name: &str, basename: &mut String, 
-                                    appname: &str) {
-        let mut idx = 0usize;
-        for valid_placeholder in VALID_BASENAME_PLACEHOLDERS {
-            let placeholder = format!("%{{{}}}", valid_placeholder);
-            if basename.contains(&placeholder) {
-                match idx {
-                    BASENAME_APPNAME_PLACEHOLDER_IDX => {
-                        *basename = basename.replace(&placeholder, appname);
-                    },
-                    BASENAME_DATETIMEUTC_PLACEHOLDER_IDX => {
-                        let datetime = OffsetDateTime::now_utc();
-                        let ts_format = format_description!("[year][month][day]_[hour][minute][second]_[offset_hour sign:mandatory][offset_second]").to_vec();
-                        let ts_string = datetime.format(&ts_format).unwrap_or_else(|e| {
-                            format!("{:#}", e)
-                        });
-                        *basename = basename.replace(&placeholder, &ts_string);
-                    },
-                    BASENAME_DATETIMELOC_PLACEHOLDER_IDX => {
-                        let datetime = OffsetDateTime::now_local().unwrap_or_else(|error| {
-                            eprintln!("Log handler '{}' type '{}' error: {} utc time ussed", log_handler_name, type_name, error);
-                            OffsetDateTime::now_utc()
-                        });
-                        let ts_format = format_description!("[year][month][day]_[hour][minute][second]_[offset_hour sign:mandatory][offset_second]").to_vec();
-                        let ts_string = datetime.format(&ts_format).unwrap_or_else(|e| {
-                            format!("{:#}", e)
-                        });
-                        *basename = basename.replace(&placeholder, &ts_string);
-                    },
-                    _ => {}                    
-                }
-                idx = idx + 1;
-            }
-        }
-    }
-}
 
 impl LogHandlerFactory for RollingFileLogHandlerFactory {
     fn type_name(&self) -> &str {
@@ -184,26 +178,43 @@ impl LogHandlerFactory for RollingFileLogHandlerFactory {
         }
         check_pattern(&basename.value, &valid_placeholders)?;
 
-        let maxsize = settings.get(log_handler_name, MAXSIZE_KEY, -1i128);
+        let maxsize = settings.get(log_handler_name, MAXSIZE_KEY,String::new());
         if maxsize.error.len() > 0 {
             return Err(format!("Log handler: '{}' type: '{}' error: '{}'", 
                         log_handler_name, self.type_name(), maxsize.error));
         }
-        if maxsize.value <= 0 {
-            return Err(format!("Log handler: '{}' type: '{}' error: '{}' has to be greather than 0",
+        if maxsize.value.is_empty(){
+            return Err(format!("Log handler: '{}' type: '{}' error: '{}' cannot be empty",
                         log_handler_name, self.type_name(), MAXSIZE_KEY));
         }
 
-        let sizeum = settings.get(log_handler_name, SIZEUM_KEY, "".to_string());
-        if sizeum.error.len() > 0 {
-            return Err(format!("Log handler: '{}' type: '{}' error: '{}'", log_handler_name, self.type_name(), sizeum.error));
-        }
-        if let Err(parse_error) = sizeum.value.parse::<SizeUm>() {
-            return Err(format!("Log handler: '{}' type: '{}' error: '{}' {}",
-                log_handler_name, self.type_name(), SIZEUM_KEY, parse_error));
-        }
+        let regex = &format!(r"^(?P<maxsize>[0-9])+(?P<sizeum>{})$", VALID_SIZEUMS.join("|"));
+        match Regex::new(regex) {
+            Ok(re) => {
+                if !re.is_match(&maxsize.value) {
+                    return Err(format!("{} not valid, has to be [:digit:]({})",
+                        maxsize.value, VALID_SIZEUMS.join("|")));
+                }
+                let caps = re.captures(&maxsize.value).unwrap();
+                let cap = &caps["maxsize"];
+                let base_maxsize: i64 = cap.parse::<i64>().unwrap_or(0i64);
 
+                if base_maxsize <= 0i64 {
+                    return Err(format!("Log handler: '{}' type: '{}' error: '{}' {} as to be greater than 0",
+                    log_handler_name, self.type_name(), MAXSIZE_KEY, base_maxsize));
+                }
 
+                let cap = &caps["sizeum"];
+
+                if let Err(parse_error) = cap.parse::<SizeUm>() {
+                    return Err(format!("Log handler: '{}' type: '{}' error: '{}' {}",
+                    log_handler_name, self.type_name(), MAXSIZE_KEY, parse_error));
+                }
+            },
+            Err(error) => {
+                return Err(format!("{}", error));
+            }
+        }
 
         Ok(())
     }
@@ -229,24 +240,39 @@ impl LogHandlerFactory for RollingFileLogHandlerFactory {
         let mut basename = settings.get(log_handler_name, BASENAME_KEY, APPNAME_BASENAME_PLACEHOLDER.to_string()).value;
         let mut extension = settings.get(log_handler_name, EXTENSION_KEY, "".to_string()).value;
         
-        self.replace_basename_placeholder(log_handler_name, 
-                                            self.type_name(), 
-                                            &mut basename, appname);
+        replace_basename_placeholder(log_handler_name, 
+                                        self.type_name(), 
+                                        &mut basename, appname);
 
 
         if !extension.starts_with(".") {
             extension = format!(".{}", extension);
         }
         
-        let base_maxsize = settings.get(log_handler_name, MAXSIZE_KEY, 1024u64).value;
-        let sizeum = settings.get(log_handler_name, SIZEUM_KEY, SIZEUM_MEGABYTE.to_string()).value;
-        let factor : u64;
-        match sizeum.parse::<SizeUm>() {
-            Ok(um) => {
-                factor = um.unwrap();
+        let maxsize = &settings.get(log_handler_name, MAXSIZE_KEY, String::from("2GB")).value;
+        let mut base_maxsize = 2u64;
+        let mut sizeum = String::from(SIZEUM_GIGABYTE);
+        let mut factor : u64 = sizeum.parse::<SizeUm>().unwrap_or(SizeUm::B(1024u64)).unwrap();
+        let regex = &format!(r"^(?P<maxsize>[0-9])+(?P<sizeum>{})$", VALID_SIZEUMS.join("|"));
+        match Regex::new(regex) {
+            Ok(re) => {
+                let caps = re.captures(maxsize).unwrap();
+                let cap = &caps["maxsize"];
+                base_maxsize = cap.parse::<u64>().unwrap_or(0u64);
+
+                sizeum = caps["sizeum"].to_string();
+
+                match sizeum.parse::<SizeUm>() {
+                    Ok(um) => {
+                        factor = um.unwrap();
+                    },
+                    Err(_) => {
+                        factor = 1024u64;
+                    }
+                }
             },
-            Err(_) => {
-                factor = 1024u64;
+            Err(_error) => {
+                
             }
         }
         let maxsize = base_maxsize * factor;
@@ -381,8 +407,9 @@ impl LogHandler for RollingFileLogHandler {
         config.insert(String::from(DIRECTORY_KEY), json!(self.directory));
         config.insert(String::from(BASENAME_KEY), json!(self.basename));
         config.insert(String::from(EXTENSION_KEY), json!(self.extension));
-        config.insert(String::from(MAXSIZE_KEY), json!(self.base_maxsize));
-        config.insert(String::from(SIZEUM_KEY), json!(self.sizeum));
+
+        let maxsize = format!("{}{}", self.base_maxsize, self.sizeum);
+        config.insert(String::from(MAXSIZE_KEY), json!(maxsize));
 
 
         Value::Object(config)
@@ -390,10 +417,103 @@ impl LogHandler for RollingFileLogHandler {
 
     fn set_config(&mut self, key: &str, value: &Value) -> Result<(), String> {
         if self.base.is_abaseconfig(key) {
-            self.base.set_config(key, value)?;
+            return self.base.set_config(key, value);
+        } else if REMOVE_PREVIOUS_LOGS_KEY == key {
+            if let Some(_remove) = value.as_bool() {
+                return Ok(());
+            } else {
+                return Err(String::from("needs a boolean value"));    
+            }
+        }  else if DIRECTORY_KEY == key {
+            if let Some(directory) = value.as_str() {
+                let dir_path = Path::new(directory);
+                if !dir_path.exists() {
+                    if let Err(ioerror) = create_dir(dir_path) {
+                        return Err(format!("Cannot create directory '{}': {:#}", 
+                            directory, ioerror));
+                    }
+                } else if !dir_path.is_dir() {
+                    return Err(format!("'{}' is not a directory", directory));            
+                }
+                self.directory = String::from(directory); 
+                return Ok(());
+            } else {
+                return Err(String::from("needs a string value"));    
+            }
+        } else if BASENAME_KEY == key {
+            if let Some(basename) = value.as_str() {
+                let mut basename = String::from(basename); 
+                let mut valid_placeholders: Vec<&str> = vec![];
+                for placeholder in VALID_BASENAME_PLACEHOLDERS {
+                    valid_placeholders.push(placeholder);
+                }
+                check_pattern(&basename, &valid_placeholders)?;
+                replace_basename_placeholder(self.get_name(), 
+                    "file", 
+                    &mut basename, &self.base.get_appname());    
+                self.basename = basename;            
+                return Ok(());
+            } else {
+                return Err(String::from("needs a string value"));    
+            }
+        } else if EXTENSION_KEY == key {
+            if let Some(extension) = value.as_str() {
+                self.extension = String::from(extension);
+                return Ok(());
+            } else {
+                return Err(String::from("needs a string value"));
+            }
+        } else if MAXSIZE_KEY == key {
+            if let Some(maxsize) = value.as_str() {
+                let regex = &format!(r"^(?P<maxsize>[0-9])+(?P<sizeum>{})$", VALID_SIZEUMS.join("|"));
+                match Regex::new(regex) {
+                    Ok(re) => {
+                        if !re.is_match(maxsize) {
+                            return Err(format!("{} not valid, has to be [:digit:]({})",
+                                maxsize, VALID_SIZEUMS.join("|")));
+                        }
+                        let caps = re.captures(maxsize).unwrap();
+                        let cap = &caps["maxsize"];
+                        let base_maxsize: u64 = cap.parse::<u64>().unwrap_or(0u64);
+
+                        let cap = &caps["sizeum"];
+
+                        let factor : u64;
+                        match cap.parse::<SizeUm>() {
+                            Ok(um) => {
+                                factor = um.unwrap();
+                            },
+                            Err(_) => {
+                                factor = 1024u64;
+                            }
+                        }
+                        let maxsize = base_maxsize * factor;
+                        if maxsize > 0 {
+                            self.maxsize = maxsize;
+                        }
+                    },
+                    Err(error) => {
+                        return Err(format!("{}", error));
+                    }
+                }
+                return Ok(());
+            } else {
+                return Err(String::from("needs an string value"));                
+            }
+        } else if DEPTH_KEY == key {
+            if let Some(depth) = value.as_i64() {
+                if depth > 0 {
+                    self.depth = depth as u32;
+                    return Ok(());
+                } else {
+                    return Err(String::from("needs an integer greater than 0 value"));                
+                }
+            } else {
+                return Err(String::from("needs an integer value"));                
+            }
         } else {
+            return Err(String::from("is not a valid parameter"));
         }    
-        Ok(())
     }
 
     fn log(&mut self, msg_type: &LogMsgType, log_message: &LogMessage) {

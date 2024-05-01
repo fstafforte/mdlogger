@@ -379,10 +379,49 @@ impl LogHandler for NetworkLogHandler {
 
     fn set_config(&mut self, key: &str, value: &Value) -> Result<(), String> {
         if self.base.is_abaseconfig(key) {
-            self.base.set_config(key, value)?;
-        } else {
-        }    
-        Ok(())
+            return self.base.set_config(key, value);
+        } else if REMOTE_ADDRESS_KEY == key {
+            if let Some(remote_address) = value.as_str() {
+                match remote_address.parse::<IpAddr>() {
+                    Ok(ip) => {
+                        match self.remote_address {
+                            Some(mut sock_addr) => {
+                                sock_addr.set_ip(ip);
+                            },
+                            None => {
+                                return Err(String::from("previous remote address is unavailable"));
+                            }
+                        }
+                    },
+                    Err(parse_error) => {
+                        return Err(format!("error: {}", parse_error));
+                    }
+                }   
+                return Ok(())
+            } else {
+                return Err(String::from("needs a string value"));
+            }
+        } else if REMOTE_PORT_KEY == key {
+            if let Some(remote_port) = value.as_u64() {
+                if  (remote_port > 0u64) && (remote_port <= u16::MAX as u64) {
+                    match self.remote_address {
+                        Some(mut sock_addr) => {
+                            sock_addr.set_port(remote_port as u16);
+                        },
+                        None => {
+                            return Err(String::from("previous remote address is unavailable"));
+                        }
+                    }
+                    return Ok(());
+                } else {
+                    return Err(format!("'{}' out of range 0..{}", remote_port, u16::MAX));
+                }
+            } else {
+                return Err(String::from("needs an positive integr value"));
+            }
+        } else {    
+            return Err(format!("'{}' is not a valid parameter key", key));
+        }
     }
 
     fn log(&mut self, msg_type: &LogMsgType, log_message: &LogMessage) {
@@ -717,10 +756,40 @@ impl LogHandler for UnixDomainLogHandler {
 
     fn set_config(&mut self, key: &str, value: &Value) -> Result<(), String> {
         if self.base.is_abaseconfig(key) {
-            self.base.set_config(key, value)?;
+            return self.base.set_config(key, value);
+        } else if SUN_PATH_KEY == key {
+            if let Some(sun_path) = value.as_str() {
+                if let Err(error) = SockAddr::unix(sun_path) {
+                    return Err(format!("{}", error));    
+                }
+
+                let mut remote_address = String::from(sun_path);
+                if let Some(start) = remote_address.find("${") {
+                    if let Some(end) = remote_address.find("}") {
+                        if start < end {
+                            let env_var_name = String::from(&remote_address[start + 2..end]);
+                            let env_var_value = &std::env::var(&env_var_name).unwrap_or(String::new());
+                            if !env_var_value.is_empty() {
+                                remote_address = remote_address.replace("${", "")
+                                            .replace("}", "")
+                                            .replace(&env_var_name, env_var_value);
+                            }
+                        }
+                    }
+                }
+                if cfg!(windows) {
+                    remote_address = remote_address.replace("/", "\\");
+                } else {
+                    remote_address = remote_address.replace("\\", "/");
+                }
+                self.remote_address = remote_address;
+                return Ok(());
+            } else {
+                return Err(String::from("needs a string value"));
+            }
         } else {
-        }    
-        Ok(())
+            return Err(String::from("is not a valid parameter"));
+        }
     }
 
     fn log(&mut self, msg_type: &LogMsgType, log_message: &LogMessage) {

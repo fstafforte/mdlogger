@@ -646,60 +646,76 @@ fn exec_set_handler_command(external_command: &ExternalCommand,
         match  external_command.get_parameter_byname(PARAMETER_LOG_HANDLER) {
             Some(log_handler_name_value) => {
                 if let Some(log_handler_name) = log_handler_name_value.1.as_str() {
+                    let mut found = false;
+                    let mut iter = log_handlers.iter();
+                    while let Some(log_handler) = iter.next() {
+                        if log_handler.get_name() == log_handler_name {
+                            found = true;
+                            break;
+                        }
+                    }
+                    if !found {
+                        answer.ack_nack = AckNack::NACK;
+                        answer.reason = format!("{} '{}' not found in the log chain", 
+                                            PARAMETER_LOG_HANDLER, log_handler_name);
+                        return;
+                    }
                     match  external_command.get_parameter_byname(PARAMETER_KEY_NAME) {
                         Some(key_value) => {
                             if let Some(key) = key_value.1.as_str() {
-                                if settings.key_exists(log_handler_name, key) {
-                                    match external_command.get_parameter_byname(PARAMETER_NEW_VALUE_NAME) {
-                                        Some(new_value_param) => {
-                                            let mut iter = log_handlers.iter_mut();
-                                            while let Some(log_handler) = iter.next() {
-                                                if log_handler.get_name() == log_handler_name {
-                                                    if let Err(error) = log_handler.set_config(key, &new_value_param.1) {
-                                                        answer.ack_nack = AckNack::NACK;
-                                                        answer.reason = format!("Log handler '{}' parameter '{}' error: {}", log_handler_name, key, error);
-                                                    } else {
-                                                        if let Some(save) = external_command.get_parameter_byname(PARAMETER_SAVE_NAME) {
-                                                            match save.1.as_bool() {
-                                                                Some(save_value) => {
-                                                                    if let Err(error) = settings.set(log_handler_name, key, save_value) {
+                                match external_command.get_parameter_byname(PARAMETER_NEW_VALUE_NAME) {
+                                    Some(new_value_param) => {
+                                        let mut iter = log_handlers.iter_mut();
+                                        while let Some(log_handler) = iter.next() {
+                                            if log_handler.get_name() == log_handler_name {
+                                                if let Err(error) = log_handler.set_config(key, &new_value_param.1) {
+                                                    answer.ack_nack = AckNack::NACK;
+                                                    answer.reason = format!("Log handler '{}' parameter '{}' error: {}", log_handler_name, key, error);
+                                                } else {
+                                                    answer.reason = format!("Log handler '{}' parameter '{}' changed but not saved for the next run",
+                                                        log_handler_name, key);
+                                                    if let Some(save) = external_command.get_parameter_byname(PARAMETER_SAVE_NAME) {
+                                                        match save.1.as_bool() {
+                                                            Some(save_value) => {
+                                                                if save_value {
+                                                                    if !settings.key_exists(log_handler_name, key) {
                                                                         answer.ack_nack = AckNack::PARTIALACK;
-                                                                        answer.reason = format!("Log handler {} key {} changed, but an error occured while settings its new value: {}",
+                                                                        answer.reason = format!("Log handler '{}' parameter '{}' changed but it does not exist in configuration file, it cannot be saved", 
+                                                                                            log_handler_name, key);    
+                                                                    } else if let Err(error) = settings.set(log_handler_name, key, new_value_param.1) {
+                                                                        answer.ack_nack = AckNack::PARTIALACK;
+                                                                        answer.reason = format!("Log handler {} key {} changed but an error occured while settings its new value: {}",
                                                                                             log_handler_name, key, error);    
                                                                     } else {
-                                                                        if save_value {
-                                                                            if let Err(error) = settings.save() {
-                                                                                answer.ack_nack = AckNack::PARTIALACK;
-                                                                                answer.reason = format!("Log handler {} key {} changed, but an error occured while saving its new value: {}",
-                                                                                                    log_handler_name, key, error);
-                                                                            }
-                                                                            answer.ack_nack = AckNack::ACK;
+                                                                        if let Err(error) = settings.save() {
+                                                                            answer.ack_nack = AckNack::PARTIALACK;
+                                                                            answer.reason = format!("Log handler {} key {} changed but an error occured while saving its new value: {}",
+                                                                                                log_handler_name, key, error);
+                                                                        } else {
+                                                                            answer.reason = format!("Log handler '{}' parameter '{}' changed and saved for the next run",
+                                                                                            log_handler_name, key);                    
                                                                         }
                                                                     }
                                                                 }
-                                                                None => {
-                                                                    answer.ack_nack = AckNack::PARTIALACK;
-                                                                    answer.reason = format!("Log handler {} key {} changed, but not saved because {} needs a boolean value",
-                                                                                        log_handler_name, key, PARAMETER_SAVE_NAME);
-                                                                }
+                                                            }
+                                                            None => {
+                                                                answer.ack_nack = AckNack::PARTIALACK;
+                                                                answer.reason = format!("Log handler {} key {} changed, but not saved because {} needs a boolean value",
+                                                                                    log_handler_name, key, PARAMETER_SAVE_NAME);
                                                             }
                                                         }
                                                     }
-                                                    break;
                                                 }
-                                            }                                                    
-                                        }
-                                        None => {
-                                            answer.ack_nack = AckNack::NACK;
-                                            answer.reason = format!("Log handler '{}' parameter '{}' missing {}", 
-                                                    log_handler_name, key, PARAMETER_NEW_VALUE_NAME);    
-
-                                        }
+                                                break;
+                                            }
+                                        }                                                    
                                     }
-                                } else {
-                                    answer.ack_nack = AckNack::NACK;
-                                    answer.reason = format!("Log handler '{}' parameter '{}' does not exist", 
-                                                        log_handler_name, key);    
+                                    None => {
+                                        answer.ack_nack = AckNack::NACK;
+                                        answer.reason = format!("Log handler '{}' parameter '{}' missing {}", 
+                                                log_handler_name, key, PARAMETER_NEW_VALUE_NAME);    
+
+                                    }
                                 }
                             } else {
                                 answer.ack_nack = AckNack::NACK;
@@ -719,7 +735,7 @@ fn exec_set_handler_command(external_command: &ExternalCommand,
             },
             None => {
                 answer.ack_nack = AckNack::NACK;
-                answer.reason = format!("{} not found", PARAMETER_LOG_HANDLER);
+                answer.reason = format!("parameter '{}' not found", PARAMETER_LOG_HANDLER);
             }            
         } // match  external_command.get_parameter_byidx(0) 
     } else {

@@ -245,11 +245,10 @@ impl LogHandler for ConsoleLogHandler {
 
     fn set_config(&mut self, key: &str, value: &Value) -> Result<(), String> {
         if self.base.is_abaseconfig(key) {
-            self.base.set_config(key, value)?;
+            return self.base.set_config(key, value);
         } else {
             if !REDIRECTION_KEYS.contains(&key) {
-                return Err(format!("Log handler '{}' key'{}' is not valid, valid are {}",
-                            self.base.get_name(), key, REDIRECTION_KEYS.join(",")));
+                return Err(format!("is not valid, valid are {}", REDIRECTION_KEYS.join(",")));
             }
             match value.as_str() {
                 Some(val) => {
@@ -268,19 +267,17 @@ impl LogHandler for ConsoleLogHandler {
                             }
                         },
                         Err(parse_error) => {
-                            return Err(format!("Log handler '{}' key'{}' value '{}' error: {}",
-                                self.base.get_name(), key, val, parse_error));
+                            return Err(format!("{}", parse_error));
     
                         }
                     } 
                 },
                 None => {
-                    return Err(format!("Log handler '{}' key'{}' needs a string value",
-                        self.base.get_name(), key));
+                    return Err(String::from("needs a string value"));
                 }
             }
+            Ok(())
         }
-        Ok(())
     }
 
     fn log(&mut self, msg_type: &LogMsgType, log_message: &LogMessage) {
