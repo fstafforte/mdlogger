@@ -387,6 +387,14 @@ impl LogHandler for NetworkLogHandler {
                         match self.remote_address {
                             Some(mut sock_addr) => {
                                 sock_addr.set_ip(ip);
+                                if self.protocol.unwrap() == TCP_NETWORK_PROTOCOL {
+                                    self.is_connected = false;
+                                    self.socket = None;
+                                    if let Err(ioerror) = Self::create(self) {
+                                        return Err(format!("Log handler '{}' protocol '{}' io error: '{:#}'", 
+                                                self.base.get_name(), self.protocol, ioerror));
+                                    }                                        
+                                }
                             },
                             None => {
                                 return Err(String::from("previous remote address is unavailable"));
@@ -407,7 +415,15 @@ impl LogHandler for NetworkLogHandler {
                     match self.remote_address {
                         Some(mut sock_addr) => {
                             sock_addr.set_port(remote_port as u16);
-                        },
+                            if self.protocol.unwrap() == TCP_NETWORK_PROTOCOL {
+                                self.is_connected = false;
+                                self.socket = None;
+                                if let Err(ioerror) = Self::create(self) {
+                                    return Err(format!("Log handler '{}' protocol '{}' io error: '{:#}'", 
+                                            self.base.get_name(), self.protocol, ioerror));
+                                }                                        
+                            }
+                    },
                         None => {
                             return Err(String::from("previous remote address is unavailable"));
                         }
@@ -783,7 +799,15 @@ impl LogHandler for UnixDomainLogHandler {
                     remote_address = remote_address.replace("\\", "/");
                 }
                 self.remote_address = remote_address;
-                return Ok(());
+                if self.protocol.unwrap() == TCP_NETWORK_PROTOCOL {
+                    self.is_connected = false;
+                    self.socket = None;
+                    if let Err(ioerror) = Self::create(self) {
+                        return Err(format!("Log handler '{}' protocol '{}' io error: '{:#}'", 
+                                self.base.get_name(), self.protocol, ioerror));
+                    }                                        
+                }
+    return Ok(());
             } else {
                 return Err(String::from("needs a string value"));
             }
