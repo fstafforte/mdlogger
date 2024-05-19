@@ -54,9 +54,9 @@ impl PartialEq for LogMsgType {
 pub const LOG_MSG_TYPE_NUM: usize = LogMsgType::FatalMsgType as usize + 1usize;
 
 pub (crate) enum LogMessageFormat {
-    PlainText(&'static str),
-    Json(&'static str),
-    JsonPretty(&'static str)
+    PlainText,
+    Json,
+    JsonPretty
 }
 
 pub (crate) struct LogMessageFormatErr {
@@ -75,11 +75,11 @@ impl FromStr for LogMessageFormat {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let s_lowecase = s.to_lowercase();
         if s_lowecase == PLAIN_TEXT_FORMAT {
-            Ok(LogMessageFormat::PlainText(PLAIN_TEXT_FORMAT))
+            Ok(LogMessageFormat::PlainText)
         } else if s_lowecase == JSON_FORMAT {
-            Ok(LogMessageFormat::Json(JSON_FORMAT))
+            Ok(LogMessageFormat::Json)
         } else if s_lowecase == JSON_PRETTY_FORMAT {
-            Ok(LogMessageFormat::JsonPretty(JSON_PRETTY_FORMAT))
+            Ok(LogMessageFormat::JsonPretty)
         } else {
             Err(LogMessageFormatErr {message: format!("<{}> is not a valid log message format, valid are ({})",
                                     s_lowecase, VALID_LOG_MESSAGE_FORMATS.join(", "))})

@@ -111,13 +111,13 @@ impl LogMessage {
         match message_format.parse::<LogMessageFormat>() {
             Ok(format_type) => {
                 match format_type {
-                    LogMessageFormat::PlainText(_) => {
+                    LogMessageFormat::PlainText => {
                         self.plain_text(pattern, appname, appver, timestamp_format, msg_types_text)
                     },
-                    LogMessageFormat::Json(_) => {
+                    LogMessageFormat::Json => {
                         self.jsonfy()
                     },
-                    LogMessageFormat::JsonPretty(_) => {
+                    LogMessageFormat::JsonPretty => {
                         self.jsonfy_pretty()
                     }
                 }
