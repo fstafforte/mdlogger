@@ -333,6 +333,7 @@ impl LogHandlerBase {
         config.insert(String::from(FATAL_TEXT_KEY), json!(self.msg_types_text[LogMsgType::FatalMsgType as usize]));
         
         config.insert(String::from(PATTERN_KEY), json!(self.pattern));
+        config.insert(String::from(LOG_MESSAGE_FORMAT_KEY), json!(self.get_message_format()));
         config.insert(String::from("appname"), json!(self.appname));
         config.insert(String::from("appver"), json!(self.appver));
 

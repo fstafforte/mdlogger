@@ -73,9 +73,9 @@ impl ExternalCommand {
     }
 
 
-    fn get_parameter_byname(&self, log_handler_name: &str) -> Option<(String, Value)> {
+    fn get_parameter_byname(&self, paramter_name: &str) -> Option<(String, Value)> {
         for param in &self.parameters {
-            if param.name == log_handler_name {
+            if param.name == paramter_name {
                 return Some((param.name.clone(), param.value.clone()));
             } 
         }
@@ -678,11 +678,15 @@ fn exec_set_handler_command(external_command: &ExternalCommand,
                                                         match save.1.as_bool() {
                                                             Some(save_value) => {
                                                                 if save_value {
+                                                                    let mut new_value = new_value_param.1.to_string().to_lowercase();
+                                                                    if new_value.starts_with('"') && new_value.ends_with('"') {
+                                                                        new_value = new_value[1..new_value.len() -1].to_string();
+                                                                    }                                                                    
                                                                     if !settings.key_exists(log_handler_name, key) {
                                                                         answer.ack_nack = AckNack::PARTIALACK;
                                                                         answer.reason = format!("Log handler '{}' parameter '{}' changed but it does not exist in configuration file, it cannot be saved", 
                                                                                             log_handler_name, key);    
-                                                                    } else if let Err(error) = settings.set(log_handler_name, key, new_value_param.1) {
+                                                                    } else if let Err(error) = settings.set(log_handler_name, key, new_value) {
                                                                         answer.ack_nack = AckNack::PARTIALACK;
                                                                         answer.reason = format!("Log handler {} key {} changed but an error occured while settings its new value: {}",
                                                                                             log_handler_name, key, error);    
