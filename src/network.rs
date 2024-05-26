@@ -382,58 +382,51 @@ impl LogHandler for NetworkLogHandler {
             return self.base.set_config(key, value);
         } else if REMOTE_ADDRESS_KEY == key {
             if let Some(remote_address) = value.as_str() {
-                match remote_address.parse::<IpAddr>() {
-                    Ok(ip) => {
-                        match self.remote_address {
-                            Some(mut sock_addr) => {
-                                sock_addr.set_ip(ip);
-                                if self.protocol.unwrap() == TCP_NETWORK_PROTOCOL {
-                                    self.is_connected = false;
-                                    self.socket = None;
-                                    if let Err(ioerror) = Self::create(self) {
-                                        return Err(format!("Log handler '{}' protocol '{}' io error: '{:#}'", 
-                                                self.base.get_name(), self.protocol, ioerror));
-                                    }                                        
-                                }
-                            },
-                            None => {
-                                return Err(String::from("previous remote address is unavailable"));
-                            }
-                        }
-                    },
-                    Err(parse_error) => {
-                        return Err(format!("error: {}", parse_error));
-                    }
-                }   
-                return Ok(None)
+                if let Err(parse_error) = remote_address.parse::<IpAddr>() {
+                        return Err(format!("{}", parse_error));
+                }
+                return Ok(Some(format!("Changing '{}' has meaning only if you save it for next run",
+                                key)));
             } else {
                 return Err(String::from("needs a string value"));
             }
         } else if REMOTE_PORT_KEY == key {
             if let Some(remote_port) = value.as_u64() {
                 if  (remote_port > 0u64) && (remote_port <= u16::MAX as u64) {
-                    match self.remote_address {
-                        Some(mut sock_addr) => {
-                            sock_addr.set_port(remote_port as u16);
-                            if self.protocol.unwrap() == TCP_NETWORK_PROTOCOL {
-                                self.is_connected = false;
-                                self.socket = None;
-                                if let Err(ioerror) = Self::create(self) {
-                                    return Err(format!("Log handler '{}' protocol '{}' io error: '{:#}'", 
-                                            self.base.get_name(), self.protocol, ioerror));
-                                }                                        
-                            }
-                    },
-                        None => {
-                            return Err(String::from("previous remote address is unavailable"));
-                        }
-                    }
-                    return Ok(None);
+                    return Ok(Some(format!("Changing '{}' has meaning only if you save it for next run",
+                            key)));
                 } else {
                     return Err(format!("'{}' out of range 0..{}", remote_port, u16::MAX));
                 }
             } else {
-                return Err(String::from("needs an positive integr value"));
+                return Err(String::from("needs a positive integer value"));
+            }
+        } else if MULTICAST_IF_KEY == key {
+            if self.protocol.unwrap() != MCAST_NETWORK_PROTOCOL {
+                return Err(format!("{} is not multicast but is {}",
+                            PROTOCOL_KEY, self.protocol.unwrap()));
+            } 
+            if let Some(multicast_if) = value.as_str() {
+                match multicast_if.parse::<IpAddr>() {
+                    Ok(ip) => {
+                        if ip.is_multicast() {
+                            return Err(format!("{} cannot be a multicast address", key));
+                        } else {
+                            if self.multicast_if.is_ipv4() && ip.is_ipv6() {
+                                return Err(format!("{} has to be an IPV4 address", MULTICAST_IF_KEY));
+                            }
+                            if self.multicast_if.is_ipv6() && ip.is_ipv4() {
+                                return Err(format!("{} has to be an IPV6 address", MULTICAST_IF_KEY));
+                            }
+                            return Ok(None);
+                        }
+                    }, 
+                    Err(parse_error) => {
+                        return Err(format!("{}", parse_error));
+                    }
+                }
+            } else {
+                return Err(String::from("needs string value"));
             }
         } else {    
             return Err(format!("'{}' is not a valid parameter key", key));
@@ -778,36 +771,8 @@ impl LogHandler for UnixDomainLogHandler {
                 if let Err(error) = SockAddr::unix(sun_path) {
                     return Err(format!("{}", error));    
                 }
-
-                let mut remote_address = String::from(sun_path);
-                if let Some(start) = remote_address.find("${") {
-                    if let Some(end) = remote_address.find("}") {
-                        if start < end {
-                            let env_var_name = String::from(&remote_address[start + 2..end]);
-                            let env_var_value = &std::env::var(&env_var_name).unwrap_or(String::new());
-                            if !env_var_value.is_empty() {
-                                remote_address = remote_address.replace("${", "")
-                                            .replace("}", "")
-                                            .replace(&env_var_name, env_var_value);
-                            }
-                        }
-                    }
-                }
-                if cfg!(windows) {
-                    remote_address = remote_address.replace("/", "\\");
-                } else {
-                    remote_address = remote_address.replace("\\", "/");
-                }
-                self.remote_address = remote_address;
-                if self.protocol.unwrap() == TCP_NETWORK_PROTOCOL {
-                    self.is_connected = false;
-                    self.socket = None;
-                    if let Err(ioerror) = Self::create(self) {
-                        return Err(format!("Log handler '{}' protocol '{}' io error: '{:#}'", 
-                                self.base.get_name(), self.protocol, ioerror));
-                    }                                        
-                }
-                return Ok(None);
+                return Ok(Some(format!("Changing '{}' has meaning only if you save it for next run",
+                                key)));
             } else {
                 return Err(String::from("needs a string value"));
             }
