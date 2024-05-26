@@ -377,7 +377,7 @@ impl LogHandler for NetworkLogHandler {
         Value::Object(config)
     }
 
-    fn set_config(&mut self, key: &str, value: &Value) -> Result<(), String> {
+    fn set_config(&mut self, key: &str, value: &Value) -> Result<Option<String>, String> {
         if self.base.is_abaseconfig(key) {
             return self.base.set_config(key, value);
         } else if REMOTE_ADDRESS_KEY == key {
@@ -405,7 +405,7 @@ impl LogHandler for NetworkLogHandler {
                         return Err(format!("error: {}", parse_error));
                     }
                 }   
-                return Ok(())
+                return Ok(None)
             } else {
                 return Err(String::from("needs a string value"));
             }
@@ -428,7 +428,7 @@ impl LogHandler for NetworkLogHandler {
                             return Err(String::from("previous remote address is unavailable"));
                         }
                     }
-                    return Ok(());
+                    return Ok(None);
                 } else {
                     return Err(format!("'{}' out of range 0..{}", remote_port, u16::MAX));
                 }
@@ -770,7 +770,7 @@ impl LogHandler for UnixDomainLogHandler {
         Value::Object(config)
     }
 
-    fn set_config(&mut self, key: &str, value: &Value) -> Result<(), String> {
+    fn set_config(&mut self, key: &str, value: &Value) -> Result<Option<String>, String> {
         if self.base.is_abaseconfig(key) {
             return self.base.set_config(key, value);
         } else if SUN_PATH_KEY == key {
@@ -807,7 +807,7 @@ impl LogHandler for UnixDomainLogHandler {
                                 self.base.get_name(), self.protocol, ioerror));
                     }                                        
                 }
-    return Ok(());
+                return Ok(None);
             } else {
                 return Err(String::from("needs a string value"));
             }

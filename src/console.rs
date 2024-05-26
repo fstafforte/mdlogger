@@ -243,7 +243,7 @@ impl LogHandler for ConsoleLogHandler {
         Value::Object(config)
     }
 
-    fn set_config(&mut self, key: &str, value: &Value) -> Result<(), String> {
+    fn set_config(&mut self, key: &str, value: &Value) -> Result<Option<String>, String> {
         if self.base.is_abaseconfig(key) {
             return self.base.set_config(key, value);
         } else {
@@ -276,7 +276,7 @@ impl LogHandler for ConsoleLogHandler {
                     return Err(String::from("needs a string value"));
                 }
             }
-            Ok(())
+            Ok(None)
         }
     }
 

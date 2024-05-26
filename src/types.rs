@@ -168,7 +168,7 @@ impl LogHandlerBase {
         CONFIGURABLE_KEYS.contains(&key)
     }
 
-    pub fn set_config(&mut self, key: &str, value: &Value) -> Result<(), String> {
+    pub fn set_config(&mut self, key: &str, value: &Value) -> Result<Option<String>, String> {
         let mut error = String::new();
         if ENABLED_KEY == key {
             match value.as_bool() {
@@ -311,7 +311,7 @@ impl LogHandlerBase {
         if error.len() > 0 {
             Err(error)
         } else {
-            Ok(())
+            Ok(None)
         }
     } 
 

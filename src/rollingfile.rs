@@ -188,7 +188,7 @@ impl LogHandlerFactory for RollingFileLogHandlerFactory {
                         log_handler_name, self.type_name(), MAXSIZE_KEY));
         }
 
-        let regex = &format!(r"^(?P<maxsize>[0-9])+(?P<sizeum>{})$", VALID_SIZEUMS.join("|"));
+        let regex = &format!(r"^(?P<maxsize>[0-9]+)(?P<sizeum>{})$", VALID_SIZEUMS.join("|"));
         match Regex::new(regex) {
             Ok(re) => {
                 if !re.is_match(&maxsize.value) {
@@ -253,7 +253,7 @@ impl LogHandlerFactory for RollingFileLogHandlerFactory {
         let mut base_maxsize = 2u64;
         let mut sizeum = String::from(SIZEUM_GIGABYTE);
         let mut factor : u64 = sizeum.parse::<SizeUm>().unwrap_or(SizeUm::B(1024u64)).unwrap();
-        let regex = &format!(r"^(?P<maxsize>[0-9])+(?P<sizeum>{})$", VALID_SIZEUMS.join("|"));
+        let regex = &format!(r"^(?P<maxsize>[0-9]+)(?P<sizeum>{})$", VALID_SIZEUMS.join("|"));
         match Regex::new(regex) {
             Ok(re) => {
                 let caps = re.captures(maxsize).unwrap();
@@ -275,6 +275,7 @@ impl LogHandlerFactory for RollingFileLogHandlerFactory {
                 
             }
         }
+
         let maxsize = base_maxsize * factor;
         let depth = settings.get(log_handler_name, DEPTH_KEY, 3u32).value;
 
@@ -303,7 +304,7 @@ impl LogHandlerFactory for RollingFileLogHandlerFactory {
                 enabled = false;
             }
         }
-
+        
         Box::new(
             RollingFileLogHandler::new(log_handler_name.to_string(), 
             enabled,
@@ -314,6 +315,7 @@ impl LogHandlerFactory for RollingFileLogHandlerFactory {
             pattern,
             appname.to_string(),
             appver.to_string(),
+            remove_previous_logs,
             directory,
             basename,
             extension,
@@ -326,6 +328,7 @@ impl LogHandlerFactory for RollingFileLogHandlerFactory {
 
 struct RollingFileLogHandler {
     base: LogHandlerBase,
+    remove_previous_logs: bool,
     directory: String,
     basename: String,
     extension: String,
@@ -346,6 +349,7 @@ impl RollingFileLogHandler{
         pattern: String,
         appname: String,
         appver: String,
+        remove_previous_logs: bool,
         directory: String,
         basename: String,
         extension: String,
@@ -362,6 +366,7 @@ impl RollingFileLogHandler{
                                     msg_types_text,
                                     message_format,
                                     pattern, appname, appver),
+            remove_previous_logs,
             directory,
             basename,
             extension,
@@ -404,68 +409,56 @@ impl LogHandler for RollingFileLogHandler {
 
     fn get_config(&self) -> Value {
         let mut config = self.base.get_config();
+        config.insert( String::from(REMOVE_PREVIOUS_LOGS_KEY), json!(self.remove_previous_logs));
         config.insert(String::from(DIRECTORY_KEY), json!(self.directory));
         config.insert(String::from(BASENAME_KEY), json!(self.basename));
         config.insert(String::from(EXTENSION_KEY), json!(self.extension));
 
         let maxsize = format!("{}{}", self.base_maxsize, self.sizeum);
         config.insert(String::from(MAXSIZE_KEY), json!(maxsize));
-
+        config.insert(String::from(DEPTH_KEY), json!(self.depth));
 
         Value::Object(config)
     }
 
-    fn set_config(&mut self, key: &str, value: &Value) -> Result<(), String> {
+    fn set_config(&mut self, key: &str, value: &Value) -> Result<Option<String>, String> {
         if self.base.is_abaseconfig(key) {
             return self.base.set_config(key, value);
         } else if REMOVE_PREVIOUS_LOGS_KEY == key {
             if let Some(_remove) = value.as_bool() {
-                return Ok(());
+                return Ok(Some(format!("Changing '{}' has meaning only if you save it for next run",
+                                key)));
             } else {
                 return Err(String::from("needs a boolean value"));    
             }
         }  else if DIRECTORY_KEY == key {
-            if let Some(directory) = value.as_str() {
-                let dir_path = Path::new(directory);
-                if !dir_path.exists() {
-                    if let Err(ioerror) = create_dir(dir_path) {
-                        return Err(format!("Cannot create directory '{}': {:#}", 
-                            directory, ioerror));
-                    }
-                } else if !dir_path.is_dir() {
-                    return Err(format!("'{}' is not a directory", directory));            
-                }
-                self.directory = String::from(directory); 
-                return Ok(());
+            if let Some(_directory) = value.as_str() {
+                return Ok(Some(format!("Changing '{}' has meaning only if you save it for next run",
+                                key)));
             } else {
                 return Err(String::from("needs a string value"));    
             }
         } else if BASENAME_KEY == key {
-            if let Some(basename) = value.as_str() {
-                let mut basename = String::from(basename); 
-                let mut valid_placeholders: Vec<&str> = vec![];
-                for placeholder in VALID_BASENAME_PLACEHOLDERS {
-                    valid_placeholders.push(placeholder);
-                }
-                check_pattern(&basename, &valid_placeholders)?;
-                replace_basename_placeholder(self.get_name(), 
-                    "file", 
-                    &mut basename, &self.base.get_appname());    
-                self.basename = basename;            
-                return Ok(());
+            if let Some(_basename) = value.as_str() {
+                return Ok(Some(format!("Changing '{}' has meaning only if you save it for next run",
+                                key)));
             } else {
                 return Err(String::from("needs a string value"));    
             }
         } else if EXTENSION_KEY == key {
             if let Some(extension) = value.as_str() {
-                self.extension = String::from(extension);
-                return Ok(());
+                if false == extension.starts_with(".") {
+                    return Ok(Some(format!("Changing '{}' has meaning only if you save it for next run",
+                                    key)));
+                } else {
+                    return Err(format!("'{}' first character cannot be '.'", extension));
+                }
             } else {
                 return Err(String::from("needs a string value"));
             }
         } else if MAXSIZE_KEY == key {
             if let Some(maxsize) = value.as_str() {
-                let regex = &format!(r"^(?P<maxsize>[0-9])+(?P<sizeum>{})$", VALID_SIZEUMS.join("|"));
+                let regex = &format!(r"^(?P<maxsize>[0-9]+)(?P<sizeum>{})$", VALID_SIZEUMS.join("|"));
                 match Regex::new(regex) {
                     Ok(re) => {
                         if !re.is_match(maxsize) {
@@ -476,10 +469,10 @@ impl LogHandler for RollingFileLogHandler {
                         let cap = &caps["maxsize"];
                         let base_maxsize: u64 = cap.parse::<u64>().unwrap_or(0u64);
 
-                        let cap = &caps["sizeum"];
+                        let sizeum = &caps["sizeum"];
 
                         let factor : u64;
-                        match cap.parse::<SizeUm>() {
+                        match sizeum.parse::<SizeUm>() {
                             Ok(um) => {
                                 factor = um.unwrap();
                             },
@@ -490,13 +483,15 @@ impl LogHandler for RollingFileLogHandler {
                         let maxsize = base_maxsize * factor;
                         if maxsize > 0 {
                             self.maxsize = maxsize;
+                            self.base_maxsize = base_maxsize;
+                            self.sizeum = sizeum.to_string();
                         }
                     },
                     Err(error) => {
                         return Err(format!("{}", error));
                     }
                 }
-                return Ok(());
+                return Ok(None);
             } else {
                 return Err(String::from("needs an string value"));                
             }
@@ -504,7 +499,7 @@ impl LogHandler for RollingFileLogHandler {
             if let Some(depth) = value.as_i64() {
                 if depth > 0 {
                     self.depth = depth as u32;
-                    return Ok(());
+                    return Ok(None);
                 } else {
                     return Err(String::from("needs an integer greater than 0 value"));                
                 }
@@ -532,15 +527,15 @@ impl LogHandler for RollingFileLogHandler {
                 if let Ok(filedata) = filemetadata {
                     if filedata.len() + formatted_message.len() as u64 > self.maxsize {
                         self.current_depth = (self.current_depth  + 1) % self.depth;
-                        if 0 == self.current_depth {
+                        current_file_name = self.get_current_file_name();
+                        filepath = Path::new(&current_file_name);
+                        if filepath.exists() {
                             if let Err(ioerror) = remove_file(filepath) {
                                 eprintln!("Log hamdler '{}',  cannot remove '{}': {:#}, log redirected to stdout", 
                                 self.get_name(), filepath.as_os_str().to_str().unwrap_or(&current_file_name), 
                                 ioerror);
                             }
                         }
-                        current_file_name = self.get_current_file_name();
-                        filepath = Path::new(&current_file_name);
                     }
                 }
             }
