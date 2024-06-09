@@ -418,7 +418,7 @@ impl LogHandler for NetworkLogHandler {
                             if self.multicast_if.is_ipv6() && ip.is_ipv4() {
                                 return Err(format!("{} has to be an IPV6 address", MULTICAST_IF_KEY));
                             }
-                            return Ok(None);
+                            return Ok(Some(format!("Changing '{}' has meaning only if you save it for next run", key)));
                         }
                     }, 
                     Err(parse_error) => {
