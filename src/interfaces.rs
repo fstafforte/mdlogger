@@ -4,7 +4,7 @@ use rssettings::Settings;
 use serde_json::Value;
 
 
-
+/// Log handler trait
 pub trait LogHandler {
     fn get_name(&self) ->&String;
     fn is_enabled(&self) ->bool;
@@ -15,6 +15,8 @@ pub trait LogHandler {
     fn log(&mut self, msg_type: &LogMsgType, log_message: &LogMessage);
 }
 
+
+/// Log handler factory trait
 pub trait LogHandlerFactory {
     fn type_name(&self) -> &str;
     fn check_parameters(&self, settings: &Settings, log_handler_name: &str) -> Result<(), String>;

@@ -46,25 +46,31 @@ pub const PARAMETER_SAVE_NAME: &str = "save";
 pub const PARAMETER_NEW_VALUE_NAME: &str = "new-value";
 
 
-
+// External command parameter object
 #[derive(Deserialize)]
 struct ExternalCommandParameter {
     name: String,
     value: Value
 }
 
+// External command object
 #[derive(Deserialize)]
 struct ExternalCommand {
     command: String,
     parameters: Vec<ExternalCommandParameter>
 }
 
+// External command object implementation
 impl ExternalCommand {
 
+    // Return external command associated parameters number
     fn get_paramter_numbers(&self) -> usize {
         self.parameters.len()
     }
 
+    // Return external command associated parameter by index
+    // * `self` itself reference
+    // * `idx` parameter index 
     fn get_parameter_byidx(&self, idx: usize) -> Result<(String, Value), String> {
         if idx < self.parameters.len() {
             return Ok((self.parameters[idx].name.clone(), self.parameters[idx].value.clone()));
@@ -73,6 +79,9 @@ impl ExternalCommand {
     }
 
 
+    // Return external command associated parameter by index
+    // * `self` itself reference
+    // * `paramter_name` parameter name 
     fn get_parameter_byname(&self, paramter_name: &str) -> Option<(String, Value)> {
         for param in &self.parameters {
             if param.name == paramter_name {
@@ -83,6 +92,7 @@ impl ExternalCommand {
     }
 }
 
+// Ack/Nack enumeration
 #[derive(Serialize)]
 enum AckNack {
     NACK = -1,
@@ -90,6 +100,7 @@ enum AckNack {
     PARTIALACK = 1
 }
 
+// External command answer object
 #[derive(Serialize)]
 struct ExternalCommandAnswer {
     ack_nack: AckNack,
@@ -97,17 +108,9 @@ struct ExternalCommandAnswer {
     value: Value, 
 }
 
-// #[derive(Serialize)]
-// struct GlobalConfiguration {
-//     enabled: bool,
-//     pattern: String,
-//     timestamp_format: String,
-//     msg_types_enabled: [bool; LOG_MSG_TYPE_NUM],
-//     msg_types_text: [String; LOG_MSG_TYPE_NUM],
-//     root_log_handler: String,
-//     log_handlers: Value
-// }
-
+// Create a thread to manage external commands
+// * `settings` reference to mdlogger settings file
+// * `answer_rx_channel` channel where command answer are passed to external commands thread
 pub (crate) fn create_external_commands_thread(settings: &Settings,
         answer_rx_channel: Receiver<String>) -> Option<(JoinHandle<()>, Arc<Mutex<bool>>)> {
     let ext_cmds_ipaddr = settings.get(GLOBAL_SECTION, EXT_CMDS_IPADDR_KEY, String::new());
@@ -299,7 +302,7 @@ pub (crate) fn create_external_commands_thread(settings: &Settings,
     commands_thread_handle           
 }
 
-
+// join external commands thread cretion result
 pub(crate) fn join_create_external_commands_thread(commands_thread_result: Option<(JoinHandle<()>, Arc<Mutex<bool>>)>) {
     match commands_thread_result {
         Some((join_handle, running)) => {
@@ -315,6 +318,11 @@ pub(crate) fn join_create_external_commands_thread(commands_thread_result: Optio
     }
 }
 
+// Commands thread function
+// * `idx` parameter index 
+// * `answer_rx_channel` channel where command answer are passed to external commands thread
+// * `commands_socket` commands comunication socket
+// * `commands_running1` commands thread running flag
 pub (crate) fn commands_thread_function(answer_rx_channel: Receiver<String>,
                                         commands_socket: Socket,
                                         commands_running1: Arc<Mutex<bool>>) {
@@ -364,6 +372,8 @@ pub (crate) fn commands_thread_function(answer_rx_channel: Receiver<String>,
 
 }
 
+// Return running flag status 
+// * `running` running flag status 
 pub (crate) fn is_running(running: &Arc<Mutex<bool>>) -> bool {
     let guard = running.lock().unwrap_or_else(
         |poinson_error| {
@@ -373,6 +383,10 @@ pub (crate) fn is_running(running: &Arc<Mutex<bool>>) -> bool {
     *guard
 }
 
+
+// Set running flag status 
+// * `running` running flag status 
+// * `value` new running flag status to set
 pub(crate) fn set_running(running: &Arc<Mutex<bool>>, value: bool) {
     let mut guard = running.lock().unwrap_or_else(
         |poinson_error| {
@@ -382,6 +396,11 @@ pub(crate) fn set_running(running: &Arc<Mutex<bool>>, value: bool) {
     *guard = value;
 }                        
 
+// Run and external command 
+// * `answer_tx_channel` answer transmition channel
+// * `command` json format command to run
+// * `log_handlers` log handlers if command is directed to one of them
+// * `settings` mutable reference to mdlogger settings file
 pub(crate) fn execute_external_commands(answer_tx_channel: &Sender<String>,
                                         command: String,
                                         log_handlers: &mut Vec<Box<dyn LogHandler>>,
@@ -424,7 +443,10 @@ pub(crate) fn execute_external_commands(answer_tx_channel: &Sender<String>,
     }
 }
 
-
+// Run get configuration command
+// * `answer` command execution answer 
+// * `log_handlers` log handlers to retrieve configuration from
+// * `settings` mutable reference to mdlogger settings file
 fn exec_get_config(answer: &mut ExternalCommandAnswer,
                     log_handlers: &Vec<Box<dyn LogHandler>>,
                     settings: &mut Settings) {
@@ -445,6 +467,8 @@ fn exec_get_config(answer: &mut ExternalCommandAnswer,
 
 }
 
+// Return a json value containing mdlogger global section configuration
+// * `settings` mutable reference to mdlogger settings file
 fn get_global(settings: &Settings) -> Value {
     let mut global_section : Map<String, Value> = Map::new();
     global_section.insert(ENABLED_KEY.to_string(), 
@@ -486,7 +510,10 @@ fn get_global(settings: &Settings) -> Value {
 }
 
 
-
+// Run set mdlogger global configuration command
+// * `external_command` command to run  
+// * `answer` command execution answer 
+// * `settings` mutable reference to mdlogger settings file
 fn exec_set_global_command(external_command: &ExternalCommand,
                         answer: &mut ExternalCommandAnswer,
                         settings: &mut Settings) {
@@ -638,6 +665,12 @@ fn exec_set_global_command(external_command: &ExternalCommand,
     }
 }
 
+
+// Run set mdlogger log handler set configuration command
+// * `external_command` command to run  
+// * `log_handlers` log handlers if command is directed to one of them
+// * `answer` command execution answer 
+// * `settings` mutable reference to mdlogger settings file
 fn exec_set_handler_command(external_command: &ExternalCommand,
                         log_handlers: &mut Vec<Box<dyn LogHandler>>,
                         answer: &mut ExternalCommandAnswer,

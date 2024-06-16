@@ -34,13 +34,17 @@ const REMOTE_ADDRESS_KEY: &str = "remote_address";
 const MULTICAST_IF_KEY: &str = "multicast_if";
 const REMOTE_PORT_KEY: &str = "remote_port";
 const SUN_PATH_KEY: &str = "sun_path";
+
+// Network protocol enumeration
 enum NetworkProtocol {
     UdpProtocol(String),
     MCastProtocol(String),
     TcpProtocol(String)
 }
 
+// Network protocol enumeration implementation
 impl NetworkProtocol {
+    // Return Network protocol value as text
     fn unwrap(&self) -> &String {
         match self {
             Self::UdpProtocol(value) => { value }
@@ -50,22 +54,26 @@ impl NetworkProtocol {
     }
 }
 
+// PartialEq trait implementation for Network protocol enumeration
 impl PartialEq for NetworkProtocol {
     fn eq(&self, other: &Self) -> bool {
         self.unwrap() == other.unwrap()
     }
 }
 
+// Network protocol format error object
 struct NetworkProtocolFormatError {
     message: String
 }
 
+// Display trait implementation for Network protocol format error object
 impl Display for NetworkProtocolFormatError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.message)
     }
 }
 
+// FromStr trait implementation for Network protocol enumeration
 impl FromStr for NetworkProtocol {
     type Err = NetworkProtocolFormatError;
 
@@ -84,6 +92,7 @@ impl FromStr for NetworkProtocol {
     }
 }
 
+// Display trait implementatio for Network protocol enumeration
 impl Display for NetworkProtocol {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.unwrap())
@@ -91,15 +100,23 @@ impl Display for NetworkProtocol {
 }
 
 
-
+// Network protocol factory object
 pub (crate) struct NetworkLogHandlerFactory {
 
 }
 
+// LogHandlerFactory trait implementation for Network protocol factory object 
 impl LogHandlerFactory for NetworkLogHandlerFactory {
+    
+    // Return log handler type name
     fn type_name(&self) -> &str {
         "network"
     }
+
+    // Check Network log handler configuration parametrs 
+    // * `self` itself reference
+    // * `settings` reference to mdlogger settings file
+    // * `log_handler_name` log handler name (SECTION name of settings file)
     fn check_parameters(&self, settings: &rssettings::Settings, log_handler_name: &str) -> Result<(), String> {
         check_log_handler_common_parameters(settings, self.type_name(), log_handler_name)?;
 
@@ -185,6 +202,12 @@ impl LogHandlerFactory for NetworkLogHandlerFactory {
         Ok(())
     }
 
+    // Create a Network log handler
+    // * `self` itself reference
+    // * `settings` reference to mdlogger settings file
+    // * `log_handler_name` log handler name (SECTION name of settings file)
+    // * `appname` application name as passed to mdlogger::initialize funtion
+    // * `appver` application version as passed to mdlogger::initialize funtion
     fn create_log_handler(&self, settings: &rssettings::Settings, log_handler_name: &str, appname: &str, appver: &str) -> Box<dyn crate::interfaces::LogHandler> {
         let mut enabled = false;
         let mut pattern =  String::new();
@@ -233,7 +256,7 @@ impl LogHandlerFactory for NetworkLogHandlerFactory {
     }
 }
 
-
+// Network log handler object
 struct NetworkLogHandler {
     base: LogHandlerBase,
     protocol: NetworkProtocol,
@@ -244,8 +267,23 @@ struct NetworkLogHandler {
     errors_list: Vec<ErrorKind>
 }
 
-
+// Network log handler object implementation
 impl NetworkLogHandler {
+
+    // Create a Network log handler object
+    // * `name` log handler name
+    // * `enabled` log handler enabling flag
+    // * `timestamp_format` time stampt format
+    // * `msg_types_enabled` log message type enabling flags
+    // * `msg_types_text` log message type texts
+    // * `message_format` log message output format (plain , json, json_pretty)
+    // * `pattern` log message format pattern
+    // * `appname` application name as passed to mdlogger::initialize funtion
+    // * `appver` application version as passed to mdlogger::initialize funtion
+    // * `protocol` network protocol type
+    // * `remote_address` network remote ip (4 or 6) address
+    // * `multicast_if` network interface in case rmote address is a multicast ip
+    // * `remote_port` network remote port
     fn new(name: String,
         enabled: bool,
         timestamp_format: String,
@@ -317,6 +355,8 @@ impl NetworkLogHandler {
         result
     }
 
+    // Create a network socket interface
+    // * `handler` mutable network log handler reference
     fn create(handler: &mut NetworkLogHandler) -> io::Result<()> {
         if let None = handler.socket {
             if let Some(remote_address) = handler.remote_address {
@@ -336,23 +376,32 @@ impl NetworkLogHandler {
     
 }
 
-
+// LogHandler trait implementation for Network log handler
 impl LogHandler for NetworkLogHandler {
+
+    // Return log handler name
     fn get_name(&self) ->&String {
         self.base.get_name()
     }
+
+    // Return if log handler is enabled
     fn is_enabled(&self) ->bool {
         self.base.is_enabled()
     }
 
+    // Return if log handler is enabled to log a specific message type
+    // * `self` itself reference
+    // * `msg_type` log message type to check for
     fn is_msg_type_enabled(&self, msg_type: &LogMsgType) -> bool{
         self.base.is_msg_type_enabled(msg_type)
     }
 
+    // Return log handler messag format pattern
     fn get_pattern(&self) ->&String {
         &self.base.get_pattern()
     }
 
+    // Return a json Value representing log handler configuration
     fn get_config(&self) -> Value {
         let mut config = self.base.get_config();
         config.insert(String::from(PROTOCOL_KEY), json!(self.protocol.to_string()));
@@ -377,6 +426,10 @@ impl LogHandler for NetworkLogHandler {
         Value::Object(config)
     }
 
+    // Set log handler configuration value
+    // * `self` itself mutable reference
+    // * `key` log message configuration key
+    // * `value` log message new configuration value
     fn set_config(&mut self, key: &str, value: &Value) -> Result<Option<String>, String> {
         if self.base.is_abaseconfig(key) {
             return self.base.set_config(key, value);
@@ -433,6 +486,10 @@ impl LogHandler for NetworkLogHandler {
         }
     }
 
+    // Log handler log function
+    // * `self` itself mutable reference
+    // * `msg_type` log message type enumeration
+    // * `log_message` log message object
     fn log(&mut self, msg_type: &LogMsgType, log_message: &LogMessage) {
         if self.is_enabled() && self.is_msg_type_enabled(msg_type) {
             let mut formatted_message = log_message.formatted_message(
@@ -502,13 +559,15 @@ impl LogHandler for NetworkLogHandler {
     }
 }
 
-
+// Unix domain protocol enumeration
 enum UnixDomainProtocol {
     UdpProtocol(String),
     TcpProtocol(String)
 }
 
+// Unix domain protocol enumeration implementation
 impl UnixDomainProtocol {
+    // Return Unix domain protocol value as text
     fn unwrap(&self) -> &String {
         match self {
             Self::UdpProtocol(value) => { value }
@@ -517,22 +576,26 @@ impl UnixDomainProtocol {
     }
 }
 
+// PartialEq trait implementation for Unix domain protocol enumeration
 impl PartialEq for UnixDomainProtocol {
     fn eq(&self, other: &Self) -> bool {
         self.unwrap() == other.unwrap()
     }
 }
 
+// Unix domain protocol format error object
 struct UnixDomainProtocolFormatError {
     message: String
 }
 
+// Display trait implementation for Unix domain protocol format error object
 impl Display for UnixDomainProtocolFormatError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.message)
     }
 }
 
+// FromStr trait implementation for Unix domain protocol enumeration
 impl FromStr for UnixDomainProtocol {
     type Err = UnixDomainProtocolFormatError;
 
@@ -549,22 +612,30 @@ impl FromStr for UnixDomainProtocol {
     }
 }
 
+// Display trait implementation for Unix domain protocol enumeration
 impl Display for UnixDomainProtocol {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.unwrap())
     }
 }
 
-
+// Unix domain log handler factory object
 pub (crate) struct UnixDomainLogHandlerFactory {
 
 }
 
+// LogHandlerFactory trait implementation for Unix domain log handler factory object 
 impl LogHandlerFactory for UnixDomainLogHandlerFactory {
+
+    // Return log handler type name
     fn type_name(&self) -> &str {
         "unix-domain"
     }
 
+    // Check Network log handler configuration parametrs 
+    // * `self` itself reference
+    // * `settings` reference to mdlogger settings file
+    // * `log_handler_name` log handler name (SECTION name of settings file)
     fn check_parameters(&self, settings: &rssettings::Settings, log_handler_name: &str) -> Result<(), String> {
         check_log_handler_common_parameters(settings, self.type_name(), log_handler_name)?;
 
@@ -624,6 +695,12 @@ impl LogHandlerFactory for UnixDomainLogHandlerFactory {
         Ok(())
     }
 
+    // Create a Network log handler
+    // * `self` itself reference
+    // * `settings` reference to mdlogger settings file
+    // * `log_handler_name` log handler name (SECTION name of settings file)
+    // * `appname` application name as passed to mdlogger::initialize funtion
+    // * `appver` application version as passed to mdlogger::initialize funtion
     fn create_log_handler(&self, settings: &rssettings::Settings, log_handler_name: &str, appname: &str, appver: &str) -> Box<dyn LogHandler> {
         let mut enabled = false;
         let mut pattern =  String::new();
@@ -677,7 +754,7 @@ impl LogHandlerFactory for UnixDomainLogHandlerFactory {
     }
 }
 
-
+// Unix domain log handler object
 struct UnixDomainLogHandler {
     base: LogHandlerBase,
     protocol: UnixDomainProtocol,
@@ -688,7 +765,21 @@ struct UnixDomainLogHandler {
 }
 
 
+// Unix domain log handler object implementation
 impl UnixDomainLogHandler {
+
+    // Create a Unix domain log handler object
+    // * `name` log handler name
+    // * `enabled` log handler enabling flag
+    // * `timestamp_format` time stampt format
+    // * `msg_types_enabled` log message type enabling flags
+    // * `msg_types_text` log message type texts
+    // * `message_format` log message output format (plain , json, json_pretty)
+    // * `pattern` log message format pattern
+    // * `appname` application name as passed to mdlogger::initialize funtion
+    // * `appver` application version as passed to mdlogger::initialize funtion
+    // * `protocol` network protocol type
+    // * `remote_address` local socket remote address
     fn new(name: String,
         enabled: bool,
         timestamp_format: String,
@@ -725,6 +816,8 @@ impl UnixDomainLogHandler {
             result
     }
 
+    // Create a unix domain socket interface
+    // * `handler` mutable network log handler reference
     fn create(handler: &mut UnixDomainLogHandler) -> io::Result<()> {
         if let None = handler.socket {
             if !handler.remote_address.is_empty() {
@@ -740,22 +833,32 @@ impl UnixDomainLogHandler {
     }
 }
 
+// LogHandler trait implementation for Unix domain log handler
 impl LogHandler for UnixDomainLogHandler {
+
+    // Return log handler name
     fn get_name(&self) ->&String {
         self.base.get_name()
     }
+
+    // Return if log handler is enabled
     fn is_enabled(&self) ->bool {
         self.base.is_enabled()
     }
 
+    // Return if log handler is enabled to log a specific message type
+    // * `self` itself reference
+    // * `msg_type` log message type to check for
     fn is_msg_type_enabled(&self, msg_type: &LogMsgType) -> bool{
         self.base.is_msg_type_enabled(msg_type)
     }
 
+    // Return log handler messag format pattern
     fn get_pattern(&self) ->&String {
         &self.base.get_pattern()
     }
 
+    // Return a json Value representing log handler configuration
     fn get_config(&self) -> Value {
         let mut config = self.base.get_config();
         config.insert(String::from(PROTOCOL_KEY), json!(self.protocol.to_string()));
@@ -763,6 +866,10 @@ impl LogHandler for UnixDomainLogHandler {
         Value::Object(config)
     }
 
+    // Set log handler configuration value
+    // * `self` itself mutable reference
+    // * `key` log message configuration key
+    // * `value` log message new configuration value
     fn set_config(&mut self, key: &str, value: &Value) -> Result<Option<String>, String> {
         if self.base.is_abaseconfig(key) {
             return self.base.set_config(key, value);
@@ -781,6 +888,10 @@ impl LogHandler for UnixDomainLogHandler {
         }
     }
 
+    // Log handler log function
+    // * `self` itself mutable reference
+    // * `msg_type` log message type enumeration
+    // * `log_message` log message object
     fn log(&mut self, msg_type: &LogMsgType, log_message: &LogMessage) {
         if self.is_enabled() && self.is_msg_type_enabled(msg_type) {
             let mut formatted_message = log_message.formatted_message(

@@ -69,7 +69,12 @@ pub (crate) const VALID_MESSAGE_PLACEHOLDERS: [&str; PLACEHOLDERS_NUMBER] = [
 	"message"			
 ];
 
-
+/// Check configuration settings parameters that all log handlers have in common.
+/// See its use in predefined log handler factory object implementation such as
+/// ConsoleLogHandlerFactory
+/// * `settings` reference to mdlogger settings file
+/// * `type_name` log handler type name
+/// * `log_handler_name` log handler name
 pub fn check_log_handler_common_parameters(settings: &Settings,
 											type_name: &str,
 											log_handler_name: &str) -> Result<(), String> {
@@ -92,6 +97,8 @@ pub fn check_log_handler_common_parameters(settings: &Settings,
 	Ok(())				
 }
 
+/// Check validity of log message format pattern 
+/// * `pattern` log message format pattern
 pub fn check_message_pattern(pattern: &String)  -> Result<(), String> {
 	let mut valid_placeholders: Vec<&str> = vec![];
 
@@ -102,6 +109,9 @@ pub fn check_message_pattern(pattern: &String)  -> Result<(), String> {
 	check_pattern(pattern, &valid_placeholders)
 } 
 
+/// General purpose function to check pattern validity 
+/// * `pattern` format pattern
+/// * `valid_placeholders` valid placeholders that pattern could contain
 pub fn check_pattern(pattern: &String, valid_placeholders: &Vec<&str>) -> Result<(), String> {
     if 0 == pattern.len() {
         return Err("Pattern is empty".to_string());
@@ -209,7 +219,9 @@ pub fn check_pattern(pattern: &String, valid_placeholders: &Vec<&str>) -> Result
 }
 
 
-
+// Return log message type flags in the mdlogger configuration global setting section
+// * `settings` reference to mdlogger settings file
+// * `caller` caller function name
 fn get_global_msg_types_enabled(settings: &Settings, caller: &str) -> [bool; LOG_MSG_TYPE_NUM] {
     let mut result: [bool; LOG_MSG_TYPE_NUM] = [false, false, false, false, true];
 
@@ -226,13 +238,28 @@ fn get_global_msg_types_enabled(settings: &Settings, caller: &str) -> [bool; LOG
     result
 }
 
+
+/// Return all common log handler paramters .
+/// See its use in predefined log handler factory object implementation such as
+/// ConsoleLogHandlerFactory
+/// * `enabled` log handler enabling flag
+/// * `pattern` log message format pattern
+/// * `timestamp_format` log messag time stamo format
+/// * `msg_types_enabled` log message type enabling flag
+/// * `msg_types_text` log message type enabling text
+/// * `message_format` log message output text type (plain, json, json_pretty)
+/// * `settings` reference to mdlogger settings file
+/// * `log_handler_name` log handler name
+/// * `caller` caller function name
 pub fn get_log_handler_common_parameters(enabled: &mut bool,
-	pattern: &mut String,
-	timestamp_format: &mut String,
-	msg_types_enabled: &mut [bool; LOG_MSG_TYPE_NUM],
-	msg_types_text: &mut [String; LOG_MSG_TYPE_NUM],
-	message_format: &mut String,
-	settings: &Settings, log_handler_name: &str, caller: &str) {
+										pattern: &mut String,
+										timestamp_format: &mut String,
+										msg_types_enabled: &mut [bool; LOG_MSG_TYPE_NUM],
+										msg_types_text: &mut [String; LOG_MSG_TYPE_NUM],
+										message_format: &mut String,
+										settings: &Settings, 
+										log_handler_name: &str, 
+										caller: &str) {
         let settings_enabled = settings.get(log_handler_name, ENABLED_KEY, false);
         if settings_enabled.error.len() > 0 {
             eprintln!("Warning: Log handler '{}', error: '{}'", log_handler_name, settings_enabled.error);
@@ -284,7 +311,9 @@ pub fn get_log_handler_common_parameters(enabled: &mut bool,
         *message_format = settings.get(log_handler_name, LOG_MESSAGE_FORMAT_KEY, DEFAULT_LOG_MESSAGE_FORMAT.to_string()).value;
 }
 
-
+// Return log message type texts in the mdlogger configuration global setting section
+// * `settings` reference to mdlogger settings file
+// * `caller` caller function name
 fn get_global_msg_types_text(settings: &Settings, caller: &str) -> [String; LOG_MSG_TYPE_NUM] {
     let mut result: [String; LOG_MSG_TYPE_NUM] = [
         DEFAULT_DEBUG_TEXT.to_string(), 
@@ -306,11 +335,13 @@ fn get_global_msg_types_text(settings: &Settings, caller: &str) -> [String; LOG_
     result
 }
 
+// Remove quotes from a text
 pub (crate) fn remove_quotes(s: &str) -> String {
 	s.trim_matches('\"').to_string()
 }
 
-pub(crate) fn add_quotes(s: &str) -> String {
+// Add quotes to a text
+pub (crate) fn add_quotes(s: &str) -> String {
 	let mut result = s.to_string();
 	if !s.starts_with('"') {
 		result.insert(0, '"')
@@ -321,6 +352,10 @@ pub(crate) fn add_quotes(s: &str) -> String {
 	result
 }
 
+/// Return if a network interface IP address exists
+/// see its use in NetworkLogHandlerFactory or in 
+/// mdlogger-test-helper executable
+/// * `ip` IPV4 or IPV6 network interface address
 pub fn network_interface_exists(ip: &str) -> bool {
 	let result: bool;
 	match ip.parse::<IpAddr>() {
@@ -342,6 +377,10 @@ pub fn network_interface_exists(ip: &str) -> bool {
 	result
 }
 
+/// Return a network interface index or None 
+/// see its use in network_interface_exists or NetworkLogHandler 
+/// or in mdlogger-test-helper executable
+/// * `ip` IPV4 or IPV6 network interface address
 pub fn network_index(ip: &IpAddr) -> Option<u32>{
     match NetworkInterface::show() {
         Ok(network_interfaces) => {

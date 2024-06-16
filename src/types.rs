@@ -35,6 +35,7 @@ const CONFIGURABLE_KEYS: [&str; 13] = [
     PATTERN_KEY,
 ];
 
+/// Log message type enumeration
 #[derive(Serialize, Clone, Copy)]
 pub enum LogMsgType {
     DebugMsgType,
@@ -44,31 +45,36 @@ pub enum LogMsgType {
     FatalMsgType,
 }
 
-
+/// PartialEq trait implementation for log message type enumration
 impl PartialEq for LogMsgType {
     fn eq(&self, other: &Self) -> bool {
         *self as i32 == *other as i32
     }
 }
 
+/// Maximum number of log mssage types
 pub const LOG_MSG_TYPE_NUM: usize = LogMsgType::FatalMsgType as usize + 1usize;
 
+// Log message format types enumeration
 pub (crate) enum LogMessageFormat {
     PlainText,
     Json,
     JsonPretty
 }
 
+// Log message format error object
 pub (crate) struct LogMessageFormatErr {
     message: String
 }
 
+// Display trait implementation for log message format error object
 impl Display for LogMessageFormatErr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.message)        
     }
 }
 
+// FromStr trait implementation for log message format enumeration
 impl FromStr for LogMessageFormat {
     type Err = LogMessageFormatErr;
     
@@ -87,7 +93,7 @@ impl FromStr for LogMessageFormat {
     }
 }
 
-
+/// Log handler base object
 pub struct LogHandlerBase {
     name: String,
     enabled: bool,
@@ -100,14 +106,28 @@ pub struct LogHandlerBase {
     appver: String
 }
 
+/// Log handler base object implementation
 impl LogHandlerBase {
+    /// Create a new Log handler base object
+    /// see its use in ConsoleLogHandler::new function as an example
+    /// * `name` Log handler name
+    /// * `enabled` Log handler enabling flag
+    /// * `timestamp_format` log messag time stamo format
+    /// * `msg_types_enabled` log message type enabling flag
+    /// * `msg_types_text` log message type text
+    /// * `message_format` log message output text type (plain, json, json_pretty)
+    /// * `pattern` log message format pattern
+    /// * `appname` application name
+    /// * `appversion` application version
     pub fn new (name: String, 
                 enabled: bool, 
                 timestamp_format: String,
                 msg_types_enabled: [bool; LOG_MSG_TYPE_NUM], 
                 msg_types_text: [String; LOG_MSG_TYPE_NUM],
                 message_format: String,
-                pattern: String, appname: String, appver: String) -> Self {
+                pattern: String, 
+                appname: String, 
+                appver: String) -> Self {
         Self {
             name,
             enabled,
@@ -121,14 +141,18 @@ impl LogHandlerBase {
         }
     }
 
+    /// Return log handler name
     pub fn get_name(&self) ->&String {
         &self.name
     }
 
+    /// Return log handler enabling flag status
     pub fn is_enabled(&self) ->bool {
         self.enabled.clone()
     }
 
+    /// Return log handler log message type enabling flag status
+    /// * `msg_type` log message type
     pub fn is_msg_type_enabled(&self, msg_type: &LogMsgType) -> bool {
         let idx = *msg_type as usize;
         let mut result = false;
@@ -139,35 +163,44 @@ impl LogHandlerBase {
         result
     }
 
+    /// Return time stamp format
     pub fn get_timestamp_format(&self) ->&String {
         &self.timestamp_format
     } 
 
-
+    /// Return log message format pattern
     pub fn get_pattern(&self) ->&String {
         &self.pattern
     } 
 
+    /// Return application name
     pub fn get_appname(&self) ->&String {
         &self.appname
     }
 
+    /// Return application version
     pub fn get_appver(&self) ->&String {
         &self.appver
     }
 
+    /// Return log message type text
     pub fn get_msg_types_text(&self) -> &[String; LOG_MSG_TYPE_NUM] {
         &self.msg_types_text
     }
 
+    /// Return log message format (plain, json, json_pretty)
     pub fn get_message_format(&self) -> &String {
         &self.message_format
     }
 
+    /// Return if key argument is a log handler base configuration key
     pub fn is_abaseconfig(&self, key: &str) -> bool {
         CONFIGURABLE_KEYS.contains(&key)
     }
 
+    /// Set log handler configuration key with a new value
+    /// * `key` configuration key name
+    /// * `value` new configuration key value
     pub fn set_config(&mut self, key: &str, value: &Value) -> Result<Option<String>, String> {
         let mut error = String::new();
         if ENABLED_KEY == key {
@@ -315,6 +348,7 @@ impl LogHandlerBase {
         }
     } 
 
+    /// Return log handler base object configurationas a Map json value
     pub fn get_config(&self) -> Map<String, Value> {
         let mut config = Map::new();
         config.insert(String::from("name"), json!(self.name));

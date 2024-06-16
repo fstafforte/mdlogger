@@ -48,8 +48,12 @@ static FINALIZE_CONDVAR: OnceLock<Condvar> = OnceLock::new();
 static FINALIZE_MUTEX: Mutex<bool> = Mutex::new(false); 
 static LOCAL_OFFSET: Mutex<UtcOffset> = Mutex::new(UtcOffset::UTC);
 
+/// mdlogger macros module
 mod macros {
 
+    /// use this macro to get function name where it is used
+    /// similar to the gnu c++ macro __PRETTY_FUNCTION__ 
+    /// it is used in the logging macros
     #[macro_export]
     macro_rules! pretty_function {
         () => {{
@@ -72,6 +76,7 @@ mod macros {
         }};
     }
 
+    /// use this macro to do a debug message type log
     #[macro_export]
     macro_rules! mdlogger_debug {
         ($($arg:tt)*) => {
@@ -79,6 +84,7 @@ mod macros {
         };
     }
 
+    /// use this macro to do a categorized debug message type log
     #[macro_export]
     macro_rules! mdlogger_cdebug {
         ($cat:tt, $($arg:tt)*) => {
@@ -86,6 +92,7 @@ mod macros {
         };
     }
 
+    /// use this macro to do a information message type log
     #[macro_export]
     macro_rules! mdlogger_info {
         ($($arg:tt)*) => {
@@ -93,6 +100,7 @@ mod macros {
         };
     }
 
+    /// use this macro to do a categorized information message type log
     #[macro_export]
     macro_rules! mdlogger_cinfo {
         ($cat:tt, $($arg:tt)*) => {
@@ -100,6 +108,7 @@ mod macros {
         };
     }
 
+    /// use this macro to do a warning message type log
     #[macro_export]
     macro_rules! mdlogger_warning {
         ($($arg:tt)*) => {
@@ -107,6 +116,7 @@ mod macros {
         };
     }
 
+    /// use this macro to do a categorized warning message type log
     #[macro_export]
     macro_rules! mdlogger_cwarning {
         ($cat:tt, $($arg:tt)*) => {
@@ -114,6 +124,7 @@ mod macros {
         };
     }
 
+    /// use this macro to do a critical message type log
     #[macro_export]
     macro_rules! mdlogger_critical {
         ($($arg:tt)*) => {
@@ -121,12 +132,15 @@ mod macros {
         };
     }
 
+    /// use this macro to do a categorized critical message type log
     #[macro_export]
     macro_rules! mdlogger_ccritical {
         ($cat:tt, $($arg:tt)*) => {
             $crate::log($crate::types::LogMsgType::CriticalMsgType, $cat, file!(), pretty_function!(), line!(), format(format_args!($($arg)*)))
         };
     }
+
+    /// use this macro to do a fatal message type log
     #[macro_export]
     macro_rules! mdlogger_fatal {
         ($($arg:tt)*) => {
@@ -134,6 +148,7 @@ mod macros {
         };
     }
 
+    /// use this macro to do a categorized fatal message type log
     #[macro_export]
     macro_rules! mdlogger_cfatal {
         ($cat:tt, $($arg:tt)*) => {
@@ -143,6 +158,8 @@ mod macros {
 }
 
 
+// Initialize the global mdlogger enabling flag
+// * `settings` reference to mdlogger setting file management object
 fn init_mdlogger_mutex(settings: &Settings) {
     let enabled = settings.get(GLOBAL_SECTION, ENABLED_KEY, false);
     if enabled.error.len() > 0 {
@@ -154,6 +171,7 @@ fn init_mdlogger_mutex(settings: &Settings) {
     *guard = enabled.value;
 }
 
+// Return the global mdlogger enabling flag value
 fn is_mdlogger_enabled() -> bool {
     let guard = MDLOGGER_MUTEX.lock().unwrap_or_else(|poison_error| {
         poison_error.into_inner()
@@ -161,6 +179,7 @@ fn is_mdlogger_enabled() -> bool {
     guard.clone()
 }
 
+// Set the global mdlogger enabling flag value
 pub (crate) fn set_mdlogger_enabled(enabled: bool) {
     let mut guard = MDLOGGER_MUTEX.lock().unwrap_or_else(|poison_error| {
         poison_error.into_inner()
@@ -169,6 +188,7 @@ pub (crate) fn set_mdlogger_enabled(enabled: bool) {
     *guard = enabled;
 }
 
+// Return application name
 fn get_appname() -> String {
     let _guard = MDLOGGER_MUTEX.lock().unwrap_or_else(|poison_error|{
         poison_error.into_inner()
@@ -185,6 +205,26 @@ fn get_appname() -> String {
     appname
 }
 
+// Return application version
+fn get_appver() -> String {
+    let _guard = MDLOGGER_MUTEX.lock().unwrap_or_else(|poison_error|{
+        poison_error.into_inner()
+    });
+    let mut appver = String::from("<unset appver>");
+    match APPVERSION.get() {
+        Some(name) => {
+            appver = name.clone();
+        },
+        None => {
+
+        }
+    }
+    appver
+}
+
+
+// Send a log message to mdlogger log thread function
+// * `log_message` log message object to be sent to log thread function
 fn send_log_message(log_message: LogMessage) {
 
     let _guard = MDLOGGER_MUTEX.lock().unwrap_or_else(|poison_error|{
@@ -205,23 +245,10 @@ fn send_log_message(log_message: LogMessage) {
     }
 }
 
-fn get_appver() -> String {
-    let _guard = MDLOGGER_MUTEX.lock().unwrap_or_else(|poison_error|{
-        poison_error.into_inner()
-    });
-    let mut appver = String::from("<unset appver>");
-    match APPVERSION.get() {
-        Some(name) => {
-            appver = name.clone();
-        },
-        None => {
-
-        }
-    }
-    appver
-}
 
 
+// Send a message from the log thread funtion to the mdlogger
+// initialization function 
 fn log_thread_send_function(sender: &Sender<String>, message: &String) {
     let mut cnt = 0;
     while let Err(error) = sender.send(message.clone()) {
@@ -235,7 +262,8 @@ fn log_thread_send_function(sender: &Sender<String>, message: &String) {
 
 
 
-
+// Check mdlogger global section settings file
+// * `settings` reference to mdlogger setting file management object
 fn check_global_configuration(settings: &Settings)  -> Result<(), String> {
 
     if !settings.key_exists(GLOBAL_SECTION, ENABLED_KEY) {
@@ -276,6 +304,8 @@ fn check_global_configuration(settings: &Settings)  -> Result<(), String> {
 }
 
 
+// Check if log handlers form a loop chain or not
+// * `settings` reference to mdlogger setting file management object
 fn check_log_handlers_chain(settings: &Settings)  -> Result<(), String> {
     let root_log_handler = settings.get(GLOBAL_SECTION, ROOT_LOG_HANDLER_KEY, "".to_string());
     if root_log_handler.error.len() > 0 {
@@ -305,6 +335,10 @@ fn check_log_handlers_chain(settings: &Settings)  -> Result<(), String> {
     Ok(())
 }
 
+
+
+// Check  log handlers configured in the mdlogger settings file
+// * `settings` reference to mdlogger setting file management object
 fn check_log_handlers(settings: &Settings)  -> Result<(), String> {
     check_log_handlers_chain(&settings)?;
 
@@ -324,12 +358,17 @@ fn check_log_handlers(settings: &Settings)  -> Result<(), String> {
     Ok(())
 }
 
+
+// Check  mdlogger configuration settings file
+// * `settings` reference to mdlogger setting file management object
 fn check_mdlogger_configuration(settings: &Settings)  -> Result<(), String> {
     check_global_configuration(&settings)?;
     check_log_handlers(&settings)?;
     Ok(()) 
 }
 
+// Create mdlogger  log handlers configured in the mdlogger settings file
+// * `settings` reference to mdlogger setting file management object
 fn create_log_handlers(settings: &Settings) ->  Vec<Box<dyn LogHandler>> {
     let mut log_handlers: Vec<Box<dyn LogHandler>> = vec![];    
 
@@ -361,6 +400,10 @@ fn create_log_handlers(settings: &Settings) ->  Vec<Box<dyn LogHandler>> {
     log_handlers
 }
 
+// Log thread function 
+// * `settings_file_path` mdlogger setting file path
+// * `log_thread_tx_channel` log thread string message transmition channel
+// * `log_message_rx_channel` log thread log messages receving channel
 fn log_thread_function(settings_file_path: String, 
                         log_thread_tx_channel: Sender<String>,
                         log_message_rx_channel: Receiver<LogMessage>) {
@@ -443,6 +486,8 @@ fn log_thread_function(settings_file_path: String,
 }
 
 
+// Check if a log handler type has been previously registered 
+// * `settings_file_path` mdlogger setting file path
 fn log_handler_type_exists(log_handler_type: &str) -> bool {
     let mutex_guard = REGISTERED_LOG_HANDLER_FACTORIES.lock().unwrap_or_else(|poison_error| {
         poison_error.into_inner()
@@ -459,6 +504,7 @@ fn log_handler_type_exists(log_handler_type: &str) -> bool {
     result
 }
 
+// Return if a mdlogger is initialized 
 fn is_initialized() ->bool {
     let guard = INITIALIZED.lock().unwrap_or_else(|poison_error| {
         poison_error.into_inner()
@@ -467,6 +513,7 @@ fn is_initialized() ->bool {
     *guard
 }
 
+// Set mdlogger initialization flag to true
 fn set_initialized() {
     let mut guard = INITIALIZED.lock().unwrap_or_else(|poison_error| {
         poison_error.into_inner()
@@ -475,6 +522,8 @@ fn set_initialized() {
     *guard = true;
 }
 
+// Function used to wait that a fatal log message has been logged
+// before panic
 fn wait_fatal_log_completed() {
     let mut fatal_logged = FATAL_LOG_MUTEX.lock().unwrap();
     while !*fatal_logged {
@@ -484,7 +533,7 @@ fn wait_fatal_log_completed() {
     panic!();
 }
 
-
+// Register predefined log habdler factory objects
 fn register_predefined_log_handler_factories() {
     if let Err(error) = register_log_handler_factory(Box::new(ConsoleLogHandlerFactory{})) {
         eprintln!("{}", error);
@@ -501,6 +550,9 @@ fn register_predefined_log_handler_factories() {
     }
 }
 
+/// Register a log handler factory object 
+/// Call this function before initialize function
+/// * `factory` log handler factory object to be registered
 pub fn register_log_handler_factory(factory: Box<dyn LogHandlerFactory + Send>) -> Result<(), String> {
     if !log_handler_type_exists(factory.type_name()) {
         let mut mutex_guard = REGISTERED_LOG_HANDLER_FACTORIES.lock().unwrap_or_else(|poison_error| {
@@ -512,6 +564,31 @@ pub fn register_log_handler_factory(factory: Box<dyn LogHandlerFactory + Send>) 
         Err(format!("Log handler factory '{}' already registered", factory.type_name()))
     }
 }
+
+/// Initialize mdlogger
+/// * `appname` application name
+/// * `appversion` application version
+/// * `settings_file_path` mdlogger configuration file path
+/// 
+/// # Examples
+/// ```
+/// use mdlogger::{initialize, finalize, format, pretty_function, mdlogger_cinfo };
+/// 
+/// fn main() {
+///     let settings_file_path = "test_files/console.ini";
+///     match initialize("console-test", "1.0.0", settings_file_path) {
+///         Ok(_) => {
+///             mdlogger_cinfo!("main", "Hello World!!!");
+///             if let Err(error) = finalize() {
+///                 println!("{}", error);
+///             }
+///         },
+///         Err(error) => {
+///             println!("{}", error);
+///         }
+///     }
+/// }
+/// ```
 
 pub fn initialize<P>(appname: &str, appversion: &str, settings_file_path: P) -> Result<(), String> where P : AsRef<Path> {
     
@@ -563,6 +640,8 @@ pub fn initialize<P>(appname: &str, appversion: &str, settings_file_path: P) -> 
     result 
 }
 
+/// Filalization mdlogger function that release all resources
+/// allocated by mdlogger
 pub fn finalize() -> Result<(), String> {
     if !is_initialized() {
         return Err(String::from("Multi-device logger is not initialized"));
@@ -577,7 +656,14 @@ pub fn finalize() -> Result<(), String> {
     Ok(())
 }
 
-
+/// mdlogger log function you can use directly 
+/// but it's better to use log macros
+/// * `msg_type` log message type
+/// * `category` log category name
+/// * `file` file name where the log occurs
+/// * `function` function nam where the log occurs
+/// * `line` file line number where the log occurs
+/// * `message` log message text
 pub fn log(msg_type: LogMsgType, 
             category: &str, 
             file: &str, 

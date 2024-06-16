@@ -35,12 +35,14 @@ const REDIRECTION_KEYS: [&str; LOG_MSG_TYPE_NUM] = [
     FATAL_REDIRECTION_KEY,
 ];
 
+// Console log handler output redirection enumeration
 pub (self) enum Redirection {
     StdOut,
     StdErr,
     Both
 }
 
+// Display implementation for Redirection enumeration
 impl Display for Redirection {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -65,12 +67,17 @@ const VALID_REDIRECTIONS: [&str; REDIRECTION_NUM] = [
     "both"
 ];
 
+
+// Redirection parser error object
 #[derive(Debug, PartialEq, Eq)]
 struct ParseRedirectionError{
     error: String
 }
 
+// Redirection parser error object implementation
 impl ParseRedirectionError {
+    // Create a Redirection parser error object
+    // * `str` wrong redirection name
     fn new(s: &str) -> Self {
         Self {
             error: format!("<{}> is not a valid console redirection, valid are ({})", s, 
@@ -79,12 +86,14 @@ impl ParseRedirectionError {
     }
 }
 
+// Redirection parser error object Display trait implemntation
 impl Display for ParseRedirectionError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.error)
     }
 }
 
+// Redirection parser error object FromStr trait implemntation
 impl FromStr for Redirection {
     type Err = ParseRedirectionError;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -103,15 +112,22 @@ impl FromStr for Redirection {
 }
 
 
-
+// Console log handler factory object
 pub (crate) struct ConsoleLogHandlerFactory {
 }
 
+// LogHandlerFactory trait implementation for Console log handler factory object 
 impl LogHandlerFactory for ConsoleLogHandlerFactory {
+
+    // Return log handler type name
     fn type_name(&self) -> &str {
         "console"
     }
 
+    // Check Console log handler configuration parametrs 
+    // * `self` itself reference
+    // * `settings` reference to mdlogger settings file
+    // * `log_handler_name` log handler name (SECTION name of settings file)
     fn check_parameters(&self, settings: &Settings, log_handler_name: &str) -> Result<(), String> {
         check_log_handler_common_parameters(settings, self.type_name(), log_handler_name)?;
         
@@ -139,7 +155,12 @@ impl LogHandlerFactory for ConsoleLogHandlerFactory {
         Ok(())
     }
 
-
+    // Create a Console log handler
+    // * `self` itself reference
+    // * `settings` reference to mdlogger settings file
+    // * `log_handler_name` log handler name (SECTION name of settings file)
+    // * `appname` application name as passed to mdlogger::initialize funtion
+    // * `appver` application version as passed to mdlogger::initialize funtion
     fn create_log_handler(&self, settings: &Settings, log_handler_name: &str, appname: &str, appver: &str) -> Box<dyn LogHandler> {
         let mut enabled = false;
         let mut pattern =  String::new();
@@ -186,12 +207,26 @@ impl LogHandlerFactory for ConsoleLogHandlerFactory {
     }
 }
 
+// Console log handler object
 pub struct ConsoleLogHandler {
     base: LogHandlerBase,
     redirections: [Redirection; LOG_MSG_TYPE_NUM]
 }
 
+// Console log handler object implementation
 impl ConsoleLogHandler {
+
+    // Create a Console log handler object
+    // * `name` log handler name
+    // * `enabled` log handler enabling flag
+    // * `timestamp_format` time stampt format
+    // * `msg_types_enabled` log message type enabling flags
+    // * `msg_types_text` log message type texts
+    // * `message_format` log message output format (plain , json, json_pretty)
+    // * `pattern` log message format pattern
+    // * `appname` application name as passed to mdlogger::initialize funtion
+    // * `appver` application version as passed to mdlogger::initialize funtion
+    // * `redirections` log message type redirection enumeration
     pub (self) fn new(name: String,
                 enabled: bool,
                 timestamp_format: String,
@@ -215,22 +250,32 @@ impl ConsoleLogHandler {
     }
 }
 
+// LogHandler trait implementation for Console log handler 
 impl LogHandler for ConsoleLogHandler {
+
+    // Return log handler name
     fn get_name(&self) ->&String {
         self.base.get_name()
     }
+
+    // Return if log handler is enabled
     fn is_enabled(&self) ->bool {
         self.base.is_enabled()
     }
 
+    // Return if log handler is enabled to log a specific message type
+    // * `self` itself reference
+    // * `msg_type` log message type to check for
     fn is_msg_type_enabled(&self, msg_type: &LogMsgType) -> bool{
         self.base.is_msg_type_enabled(msg_type)
     }
 
+    // Return log handler messag format pattern
     fn get_pattern(&self) ->&String {
         &self.base.get_pattern()
     }
 
+    // Return a json Value representing log handler configuration
     fn get_config(&self) -> Value {
         let mut config = Map::new();
         let mut base_config = self.base.get_config();
@@ -243,6 +288,10 @@ impl LogHandler for ConsoleLogHandler {
         Value::Object(config)
     }
 
+    // Set log handler configuration value
+    // * `self` itself mutable reference
+    // * `key` log message configuration key
+    // * `value` log message new configuration value
     fn set_config(&mut self, key: &str, value: &Value) -> Result<Option<String>, String> {
         if self.base.is_abaseconfig(key) {
             return self.base.set_config(key, value);
@@ -280,6 +329,10 @@ impl LogHandler for ConsoleLogHandler {
         }
     }
 
+    // Log handler log function
+    // * `self` itself mutable reference
+    // * `msg_type` log message type enumeration
+    // * `log_message` log message object
     fn log(&mut self, msg_type: &LogMsgType, log_message: &LogMessage) {
         if self.is_enabled() && self.is_msg_type_enabled(msg_type) {
             let idx = *msg_type as usize;

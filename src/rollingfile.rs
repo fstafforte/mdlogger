@@ -58,6 +58,7 @@ pub (crate) const VALID_BASENAME_PLACEHOLDERS: [&str; BASENAME_PLACEHOLDER_NUM] 
     DATETIMELOC_BASENAME_PLACEHOLDER
 ];
 
+// Size unit measure enumeration
 enum SizeUm {
     B(u64),
     KB(u64),
@@ -66,7 +67,9 @@ enum SizeUm {
     TB(u64)
 }
 
+// Size unit measure enumeration implementation
 impl SizeUm {
+    // Return size unit measure factor value
     fn unwrap(&self) -> u64 {
         match self {
             Self::B(value) => value.clone(),
@@ -78,16 +81,19 @@ impl SizeUm {
     }
 }
 
+// Size unit measure format error object
 struct SizeUmFormatError {
     message: String
 }
 
+// Display trait implementaion of a size unit measure format error object
 impl Display for SizeUmFormatError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.message)
     }
 }
 
+// FromStr trait implementaion of a size unit measure enumeration
 impl FromStr for SizeUm {
     type Err = SizeUmFormatError;
 
@@ -112,8 +118,14 @@ impl FromStr for SizeUm {
     }
 }
 
+// Replace in a file basename a valid placeholder with its real value
+// * `log_handler_name` log handler name
+// * `type_name` log handler type name
+// * `basename` file base name
+// * `appname` application name
 fn replace_basename_placeholder(log_handler_name: &str, 
-                                type_name: &str, basename: &mut String, 
+                                type_name: &str, 
+                                basename: &mut String, 
                                 appname: &str) {
     let mut idx = 0usize;
     for valid_placeholder in VALID_BASENAME_PLACEHOLDERS {
@@ -149,17 +161,22 @@ fn replace_basename_placeholder(log_handler_name: &str,
     }
 }
 
-
+// Rolling file log handler factory object
 pub (crate) struct RollingFileLogHandlerFactory {
 
 }
 
-
+// LogHandlerFactory trait implementation for Rolling file log handler factory object 
 impl LogHandlerFactory for RollingFileLogHandlerFactory {
+    // Return log handler type name
     fn type_name(&self) -> &str {
         "file"
     }
 
+    // Check Rolling file log handler configuration parametrs 
+    // * `self` itself reference
+    // * `settings` reference to mdlogger settings file
+    // * `log_handler_name` log handler name (SECTION name of settings file)
     fn check_parameters(&self, settings: &Settings, log_handler_name: &str) -> Result<(), String> {
         check_log_handler_common_parameters(settings, self.type_name(), log_handler_name)?;
         
@@ -219,6 +236,12 @@ impl LogHandlerFactory for RollingFileLogHandlerFactory {
         Ok(())
     }
 
+    // Create a Rolling file log handler
+    // * `self` itself reference
+    // * `settings` reference to mdlogger settings file
+    // * `log_handler_name` log handler name (SECTION name of settings file)
+    // * `appname` application name as passed to mdlogger::initialize funtion
+    // * `appver` application version as passed to mdlogger::initialize funtion
     fn create_log_handler(&self, settings: &Settings, log_handler_name: &str, appname: &str, appver: &str) -> Box<dyn LogHandler> {
         let mut enabled = false;
         let mut pattern =  String::new();
@@ -326,6 +349,7 @@ impl LogHandlerFactory for RollingFileLogHandlerFactory {
     }
 }
 
+// Rolling file log handler object
 struct RollingFileLogHandler {
     base: LogHandlerBase,
     remove_previous_logs: bool,
@@ -339,7 +363,27 @@ struct RollingFileLogHandler {
     current_depth: u32,
 }
 
+// Rolling file log handler object implementation
 impl RollingFileLogHandler{
+
+    // Create a Rolling file log handler object
+    // * `name` log handler name
+    // * `enabled` log handler enabling flag
+    // * `timestamp_format` time stampt format
+    // * `msg_types_enabled` log message type enabling flags
+    // * `msg_types_text` log message type texts
+    // * `message_format` log message output format (plain , json, json_pretty)
+    // * `pattern` log message format pattern
+    // * `appname` application name as passed to mdlogger::initialize funtion
+    // * `appver` application version as passed to mdlogger::initialize funtion
+    // * `remove_previous_logs` flag indicating if log handler has to remove previous log files
+    // * `directory` directory where log handler stores log files
+    // * `basename` log file base name
+    // * `extension` log file extension
+    // * `maxsize` log file calculated maximum size
+    // * `base_maxsize` log file maximum size as found in configuration sttings file
+    // * `sizeum` log file size unit measure    
+    // * `depth` log file rolling depth
     fn new(name: String,
         enabled: bool,
         timestamp_format: String,
@@ -378,6 +422,7 @@ impl RollingFileLogHandler{
         }
     }
 
+    // Return the current log file name according the current depth value
     fn get_current_file_name(&self) -> String {
         let result: String;
         if 0 == self.current_depth {
@@ -390,23 +435,32 @@ impl RollingFileLogHandler{
     }
 }
 
-
+// LogHandler trait implementation for Rolling file log handler
 impl LogHandler for RollingFileLogHandler {
+
+    // Return log handler name
     fn get_name(&self) ->&String {
         self.base.get_name()
     }
+
+    // Return if log handler is enabled
     fn is_enabled(&self) ->bool {
         self.base.is_enabled()
     }
 
+    // Return if log handler is enabled to log a specific message type
+    // * `self` itself reference
+    // * `msg_type` log message type to check for
     fn is_msg_type_enabled(&self, msg_type: &LogMsgType) -> bool{
         self.base.is_msg_type_enabled(msg_type)
     }
 
+    // Return log handler messag format pattern
     fn get_pattern(&self) ->&String {
         &self.base.get_pattern()
     }
 
+    // Return a json Value representing log handler configuration
     fn get_config(&self) -> Value {
         let mut config = self.base.get_config();
         config.insert( String::from(REMOVE_PREVIOUS_LOGS_KEY), json!(self.remove_previous_logs));
@@ -421,6 +475,10 @@ impl LogHandler for RollingFileLogHandler {
         Value::Object(config)
     }
 
+    // Set log handler configuration value
+    // * `self` itself mutable reference
+    // * `key` log message configuration key
+    // * `value` log message new configuration value
     fn set_config(&mut self, key: &str, value: &Value) -> Result<Option<String>, String> {
         if self.base.is_abaseconfig(key) {
             return self.base.set_config(key, value);
@@ -511,6 +569,10 @@ impl LogHandler for RollingFileLogHandler {
         }    
     }
 
+    // Log handler log function
+    // * `self` itself mutable reference
+    // * `msg_type` log message type enumeration
+    // * `log_message` log message object
     fn log(&mut self, msg_type: &LogMsgType, log_message: &LogMessage) {
         if self.is_enabled() && self.is_msg_type_enabled(msg_type) {
             let formatted_message = log_message.formatted_message(

@@ -21,14 +21,16 @@ use crate::types::LogMessageFormat;
 
 
 
-
+// Time stamp object
 #[derive(Serialize)]
 struct TimeStamp {
     seconds: i64,
     nanoseconds: i128,    
 }
 
+// Time stamp object implementation
 impl TimeStamp {
+    // Create a time stamp object represnting current time
     fn now() -> Self {
         let now_utc = OffsetDateTime::now_utc();
         Self {
@@ -38,6 +40,7 @@ impl TimeStamp {
     }
 }
 
+// Local time offeset object
 #[derive(Clone, Serialize)]
 pub struct LocalOffset {
     hours: i8,
@@ -45,11 +48,14 @@ pub struct LocalOffset {
     seconds: i8
 }
 
+// Local time offeset object
 impl LocalOffset {
+    // Create an empty local time offeset object
     pub (crate) fn new() -> Self {
         Self { hours: 0i8, minutes: 0i8, seconds: 0i8 }
     }
 
+    // Set a local time offeset object with specific hour, minutes, seconds value
     pub (crate) fn set_hms(&mut self, hms: (i8, i8, i8)) {
         self.hours = hms.0;
         self.minutes = hms.1;
@@ -57,6 +63,7 @@ impl LocalOffset {
     }
 }
 
+/// Log message object
 #[derive(Serialize)]
 pub struct LogMessage {
     timestamp: TimeStamp,
@@ -70,7 +77,16 @@ pub struct LogMessage {
     message: String
 }
 
+/// Log message object implementation
 impl LogMessage {
+    /// Create a new log message object
+    /// * `msg_type` log message type enumeration
+    /// * `category` log message category name
+    /// * `file` file name where the log message occured
+    /// * `function` function name where the log message occured
+    /// * `line` file line number where the log message occured
+    /// * `message` user message to be logged
+    /// * `local_offset` local time stamp offset when message occured
     pub fn new(msg_type: LogMsgType, 
         category: String,
         file: String,
@@ -92,14 +108,23 @@ impl LogMessage {
         }
     }
 
+    // Return log message type enumeration
     pub (crate) fn get_msg_type(&self) -> &LogMsgType {
         &self.msg_type
     }
 
+    // Return user message to be logged
     pub (crate) fn get_message(&self) -> &String {
         &self.message
     }
 
+    /// Return formatted message to be logged
+    /// * `message_format` log message format type (plain, json, json_pretty)
+    /// * `pattern` log message format pattern
+    /// * `appname` application name
+    /// * `appversion` application version
+    /// * `timestamp_format` log message time stamp format
+    /// * `msg_types_text` log message type text
     pub fn formatted_message(&self, 
                                 message_format: &String,
                                 pattern: &String, 
@@ -129,7 +154,12 @@ impl LogMessage {
         }                                    
     }
 
-
+    // Return log message as a plain text
+    // * `pattern` log message format pattern
+    // * `appname` application name
+    // * `appversion` application version
+    // * `timestamp_format` log message time stamp format
+    // * `msg_types_text` log message type text
     fn plain_text(&self, 
                 pattern: &String, 
                 appname: &String, 
@@ -306,12 +336,16 @@ impl LogMessage {
        result        
     }
    
+    // Return log message as a json text
+    // * `self` rference to itself
     fn jsonfy(&self) -> String {
         serde_json::to_string(self).unwrap_or_else(|e| {
             format!("{{ \"error\": \"{}\" }}", e.to_string())
         })
     }
 
+    // Return log message as a json pretty text
+    // * `self` rference to itself
     fn jsonfy_pretty(&self) -> String {
         serde_json::to_string_pretty(self).unwrap_or_else(|e| {
             format!("{{ \"error\": \"{}\" }}", e.to_string())
