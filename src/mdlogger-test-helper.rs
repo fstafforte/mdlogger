@@ -5,6 +5,7 @@ use mdlogger::utils::{self, network_interface_exists};
 use network_interface::{Addr, NetworkInterface, NetworkInterfaceConfig};
 use socket2::{Domain, SockAddr, Socket, Type};
 
+// Network interface information object
 struct NetworkInterfaceInfo {
     name: String,
     index: u32,
@@ -12,7 +13,13 @@ struct NetworkInterfaceInfo {
     addresses: Vec<Addr>
 }
 
+// Network interface information object implementation
 impl NetworkInterfaceInfo {
+    // Create a network interface information object
+    // * `name` network interface name 
+    // * `index` network interface system index
+    // * `mac_addr` network interface MAC address
+    // * `addresses` network interface associated IP addresses
     fn new(name: String, index: u32, mac_addr: String, addresses: Vec<Addr>) -> Self {
         Self {
             name,
@@ -23,24 +30,28 @@ impl NetworkInterfaceInfo {
     }    
 }
 
+// Hash trait implementation for network interface information object
 impl Hash for NetworkInterfaceInfo {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.name.hash(state)
     }
 }
 
+// PartialEq trait implementation for network interface information object
 impl PartialEq for NetworkInterfaceInfo {
     fn eq(&self, other: &Self) -> bool {
         self.name == other.name
     }
 }
 
-
+// Print-out command line help and exit 
+// * `clp` command line parser reference 
 fn show_help_and_exit_with_error(clp: &CommandLineParser) {
     let _ = clp.show_help_on(&mut std::io::stderr().lock());
     std::process::exit(-1);
 }
 
+/// This executable has been created to test mdlogger library
 fn main() {
     let valid_servers = vec!["tcp", "udp", "mcast", "unix-udp", "unix-tcp"];
 
@@ -151,7 +162,7 @@ fn main() {
 
 }
 
-
+// Print-out network interfaces list
 fn show_network_interfaces() {
     match NetworkInterface::show() {
         Ok(network_interfaces) => {
@@ -190,7 +201,9 @@ fn show_network_interfaces() {
     }    
 }
 
-
+// This function implements a udp server
+// * `server_ip` server receiving ip address 
+// * `port` server receiving ip address
 fn udp_server(server_ip: IpAddr, port: u16) {
     let domain: Domain;
     
@@ -247,6 +260,11 @@ fn udp_server(server_ip: IpAddr, port: u16) {
     }
 }
 
+
+// This function implements a multicast udp server
+// * `server_ip` server multicast receiving ip address 
+// * `port` server receiving ip address
+// * `mcast_itf_ip` server multicast intrface receiving ip address
 fn mcast_server(server_ip: IpAddr, port: u16, mcast_itf_ip: IpAddr) {
     let domain: Domain;
     
@@ -348,7 +366,9 @@ fn mcast_server(server_ip: IpAddr, port: u16, mcast_itf_ip: IpAddr) {
     }
 }
 
-
+// This function implements a tcp server
+// * `server_ip` server multicast receiving ip address 
+// * `port` server receiving ip address
 fn tcp_server(server_ip: IpAddr, port: u16) {
     let domain: Domain;
     
@@ -405,6 +425,8 @@ fn tcp_server(server_ip: IpAddr, port: u16) {
     }
 }
 
+// Receive a messag from a tcp peer socket
+// * `client_socket` client peer socket reference
 fn tcp_receive_message(client_socket: &Socket) -> std::io::Result<String> {
     let mut buf:[MaybeUninit<u8>; 1] = unsafe { MaybeUninit::zeroed().assume_init() };
     let mut v: Vec<u8> = vec![];
@@ -434,7 +456,9 @@ fn tcp_receive_message(client_socket: &Socket) -> std::io::Result<String> {
     Ok(from_utf8(&v).unwrap_or("").to_string())
 }
 
-
+// This function implements a tcp or udp server
+// * `server_type` server type (tcp or udp)
+// * `server_addr` unix domain server address
 fn unix_domain_server(server_type: &String, server_addr: &String) {
     match SockAddr::unix(server_addr) {
         Ok(sock_addr) => {
@@ -472,6 +496,9 @@ fn unix_domain_server(server_type: &String, server_addr: &String) {
 }
 
 
+// This function implements a tcp server
+// * `socket` server socket 
+// * `addr` unix domain server address
 fn unix_domain_tcp_server(socket: Socket, addr: &String) {
     if let Err(error) = socket.listen(5) {
         eprintln!("UNIX DOMAIN TCP server cannot listen: {}", error);
@@ -501,6 +528,9 @@ fn unix_domain_tcp_server(socket: Socket, addr: &String) {
     }
 }
 
+// This function implements a udp server
+// * `socket` server socket 
+// * `addr` unix domain server address
 fn unix_domain_udp_server(socket: Socket, addr: &String) {
     println!("Waiting for message {}", addr);
     let mut buf: [MaybeUninit<u8>; u16::MAX as usize] = unsafe { MaybeUninit::zeroed().assume_init() };
