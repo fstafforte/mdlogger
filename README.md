@@ -28,9 +28,9 @@ Logging message can be identify by a category (a free text tag that could be pri
 
 MDLogger can receive external command to change configuration at run time.
 
-**[configuration file documntation](https://github.com/fstafforte/mdlogger/docs/mdlogger_configuration.pdf)**
+**[configuration file documntation](https://github.com/fstafforte/mdlogger/tree/develop/docs/mdlogger_configuration.pdf)**
 
-**[external command documentation](https://github.com/fstafforte/mdlogger/docs/mdlogger_external_commands.pdf)**
+**[external command documentation](https://github.com/fstafforte/mdlogger/tree/develop/docs/mdlogger_external_commands.pdf)**
 # HOW MDLOGGER WORKS
 
 To prevent a multi-threaded process from being slowed down as little as possible by log messaging, mdlogger creates its own logging thread where log messages are handled by different log hanlers created via the configuration file.
