@@ -7,6 +7,9 @@ rust-version = "1.76.0"
 readme = "README.md"
 keywords = ["logging", "logger"]
 categories = ["logging"]
+description = "Multi-device logging system library crate"
+repository = "https://github.com/fstafforte/mdlogger"
+documentation = "https://docs.rs/mdlogger"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
