@@ -41,3 +41,8 @@ This software is under **[MIT OR Apache-2.0]** </br>**https://mit-license.org/**
 
 
 ## MSRV 1.76.0
+
+## History
+
+Rev. 0.1.0 First issue<br/>
+Rev. 0.1.1 Correct configuration documentation
