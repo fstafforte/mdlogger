@@ -52,7 +52,7 @@ static LOCAL_OFFSET: Mutex<UtcOffset> = Mutex::new(UtcOffset::UTC);
 mod macros {
 
     /// use this macro to get function name where it is used
-    /// similar to the gnu c++ macro __PRETTY_FUNCTION__ 
+    /// similar to the gnu c++ macro **\_\_PRETTY_FUNCTION\_\_** 
     /// it is used in the logging macros
     #[macro_export]
     macro_rules! pretty_function {
