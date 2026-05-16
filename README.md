@@ -45,4 +45,9 @@ This software is under **[MIT OR Apache-2.0]** </br>**https://mit-license.org/**
 ## History
 
 Rev. 0.1.0 First issue<br/>
-Rev. 0.1.1 Correct configuration documentation
+Rev. 0.1.1 Correct configuration documentation<br>
+Rev. 0.1.2
+<ol>
+    <li>Removed rand  vulnerability (used by mdlogger_test_helper only )<br> using rand version 0.10.1</li>
+    <li>Added a script file (run_tests.sh) to run all crate tests</li>
+</ol>

@@ -716,7 +716,7 @@ mod tests {
     
 
     use super::*;
-    use rand::Rng;
+    use rand::RngExt;
 
     fn do_logs(millis: u64) {
         let thread_names: [&str; 4] = [
@@ -731,7 +731,7 @@ mod tests {
                     let thread = thread::current();
                     let thread_name = thread.name().unwrap_or("");
 
-                    let mut rng = rand::thread_rng();
+                    let mut rng = rand::rng();
                     let mut thread_running: bool;
                     {
                         let mutex_guard = arc_running.lock().unwrap_or_else(|poison_error| {
@@ -741,31 +741,31 @@ mod tests {
                     }
                     while true == thread_running {
                         mdlogger_debug!("I'm logging from '{}'", thread_name);
-                        let mut interval = rng.gen_range(10..1000);
+                        let mut interval = rng.random_range(10..1000);
                         thread::sleep(Duration::from_millis(interval));
                         mdlogger_cdebug!("cat1", "I'm logging from '{}'", thread_name); 
-                        interval = rng.gen_range(10..1000);
+                        interval = rng.random_range(10..1000);
                         thread::sleep(Duration::from_millis(interval));
 
                         mdlogger_info!("I'm logging from '{}'", thread_name);
-                        interval = rng.gen_range(10..1000);
+                        interval = rng.random_range(10..1000);
                         thread::sleep(Duration::from_millis(interval));
                         mdlogger_cinfo!("cat2", "I'm logging from '{}'", thread_name); 
-                        interval = rng.gen_range(10..1000);
+                        interval = rng.random_range(10..1000);
                         thread::sleep(Duration::from_millis(interval));
 
                         mdlogger_warning!("I'm logging from '{}'", thread_name);
-                        interval = rng.gen_range(10..1000);
+                        interval = rng.random_range(10..1000);
                         thread::sleep(Duration::from_millis(interval));
                         mdlogger_cwarning!("cat2", "I'm logging from '{}'", thread_name); 
-                        interval = rng.gen_range(10..1000);
+                        interval = rng.random_range(10..1000);
                         thread::sleep(Duration::from_millis(interval));
 
                         mdlogger_critical!("I'm logging from '{}'", thread_name);
-                        interval = rng.gen_range(10..1000);
+                        interval = rng.random_range(10..1000);
                         thread::sleep(Duration::from_millis(interval));
                         mdlogger_ccritical!("cat2", "I'm logging from '{}'", thread_name); 
-                        interval = rng.gen_range(10..1000);
+                        interval = rng.random_range(10..1000);
                         thread::sleep(Duration::from_millis(interval));
                         {
                             let mutex_guard = arc_running.lock().unwrap_or_else(|poison_error| {
@@ -1050,7 +1050,7 @@ mod tests {
 
     #[test]
     fn unix_domain_wring_protocol() {
-        let settings_file_path = "test_files/unix_domain_wring_protocol.ini";
+        let settings_file_path = "test_files/unix_domain_wrong_protocol.ini";
         assert_eq!(Ok(()), initialize("rollingfile-test", "1.0.0", settings_file_path));
     }
 
